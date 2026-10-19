@@ -1,0 +1,819 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Graduate</title>
+<meta name="description" content="Prove when your small model is ready to take over. Distil agent traces into a LoRA student and certify, per slice of traffic, where it can replace the teacher.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #fbfaf7;
+  --surface: #ffffff;
+  --ink: #17181b;
+  --muted: #5b5f68;
+  --line: #e4e2dc;
+  --accent: #1f5fbf;
+  --accent-soft: #e8effa;
+  --good: #1f7a4d;
+  --good-soft: #e5f3ea;
+  --bad: #b3352b;
+  --bad-soft: #f8e7e5;
+  --warn: #8a5a00;
+  --warn-soft: #fbf0d9;
+  --code-bg: #f2f1ec;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111215; --surface: #191b1f; --ink: #ecebe7; --muted: #a2a5ad; --line: #2b2e34;
+    --accent: #7aa7ee; --accent-soft: #1b2738; --good: #6fcf9c; --good-soft: #16281f;
+    --bad: #f08c82; --bad-soft: #2e1a18; --warn: #e5b85c; --warn-soft: #2b2416; --code-bg: #1f2126;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111215; --surface: #191b1f; --ink: #ecebe7; --muted: #a2a5ad; --line: #2b2e34;
+  --accent: #7aa7ee; --accent-soft: #1b2738; --good: #6fcf9c; --good-soft: #16281f;
+  --bad: #f08c82; --bad-soft: #2e1a18; --warn: #e5b85c; --warn-soft: #2b2416; --code-bg: #1f2126;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 16px/1.6 Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 0.88em; }
+code { background: var(--code-bg); padding: 0.1em 0.35em; border-radius: 4px; }
+pre { background: var(--code-bg); padding: 16px; border-radius: 8px; overflow-x: auto; line-height: 1.5; }
+pre code { background: none; padding: 0; }
+.wrap { max-width: 980px; margin: 0 auto; padding: 0 16px; }
+header.nav { border-bottom: 1px solid var(--line); }
+header.nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; gap: 16px; }
+.brand { font-weight: 700; font-size: 18px; color: var(--ink); display: flex; align-items: center; gap: 10px; }
+.brand svg { flex: none; }
+nav.links { display: flex; gap: 20px; font-size: 14px; }
+nav.links a { color: var(--muted); }
+@media (max-width: 640px) { nav.links .opt { display: none; } }
+
+.hero { padding-top: 72px; padding-bottom: 48px; }
+.eyebrow { display: inline-block; font-size: 13px; font-weight: 500; color: var(--warn); background: var(--warn-soft); padding: 4px 10px; border-radius: 999px; }
+h1 { font-size: clamp(34px, 6vw, 54px); line-height: 1.08; letter-spacing: -0.02em; margin: 18px 0 18px; max-width: 16ch; }
+.lede { font-size: 19px; color: var(--muted); max-width: 62ch; margin: 0; }
+.cta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+.btn { display: inline-block; padding: 10px 18px; border-radius: 8px; font-weight: 500; font-size: 15px; border: 1px solid var(--line); color: var(--ink); background: var(--surface); }
+.btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.btn:hover { text-decoration: none; opacity: 0.9; }
+
+section { padding: 48px 0; border-top: 1px solid var(--line); }
+h2 { font-size: 28px; letter-spacing: -0.01em; margin: 0 0 8px; }
+.sub { color: var(--muted); margin: 0 0 28px; max-width: 68ch; }
+h3 { font-size: 17px; margin: 0 0 6px; }
+
+.grid { display: grid; gap: 16px; }
+.g2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.g3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+.card p { margin: 0; color: var(--muted); font-size: 15px; }
+.step { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--accent); font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; }
+
+
+/* tables and pills */
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pill { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.pill.yes { color: var(--good); background: var(--good-soft); }
+.pill.no { color: var(--bad); background: var(--bad-soft); }
+.pill.wait { color: var(--warn); background: var(--warn-soft); }
+
+figure { margin: 0; }
+
+
+ul.tight { margin: 0; padding-left: 20px; }
+ul.tight li { margin: 4px 0; }
+.note { background: var(--accent-soft); border-radius: 10px; padding: 14px 18px; font-size: 15px; }
+
+/* charts */
+:root { --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --grid: #e7e5df; --axis: #c3c2b7; --band: rgba(23,24,27,0.07); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --grid: #2c2e33; --axis: #44474e; --band: rgba(236,235,231,0.08); } }
+:root[data-theme="dark"] { --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --grid: #2c2e33; --axis: #44474e; --band: rgba(236,235,231,0.08); }
+.chart-card h3 { margin-bottom: 2px; }
+.chart-sub { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.legend i.line { height: 2px; width: 14px; border-radius: 1px; vertical-align: 3px; }
+.hb { position: relative; }
+.hb-group { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 14px 0 4px; }
+.hb-group:first-child { margin-top: 0; }
+.hb-row { display: grid; grid-template-columns: minmax(150px, 38%) 1fr var(--hb-extra, 0px); align-items: center; gap: 12px; min-height: 30px; cursor: default; }
+.hb-row:hover .hb-bar { filter: brightness(1.08); }
+.hb-row:hover .hb-label { color: var(--ink); }
+.hb-label { font-size: 14px; color: var(--muted); line-height: 1.3; padding: 5px 0; }
+.hb-track { position: relative; height: 18px; }
+.hb-bar { position: absolute; left: 0; top: 0; height: 18px; border-radius: 0 4px 4px 0; min-width: 2px; }
+.hb-val { position: absolute; top: 0; line-height: 18px; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--ink); white-space: nowrap; padding: 0 4px 0 6px; background: var(--surface); }
+.hb-extra { font-size: 13px; font-variant-numeric: tabular-nums; color: var(--muted); text-align: right; white-space: nowrap; }
+.hb-extra b { color: var(--ink); font-weight: 600; }
+.hb-ref { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--ink); pointer-events: none; }
+.hb-band { position: absolute; top: 0; bottom: 0; background: var(--band); pointer-events: none; }
+.hb-refl { position: absolute; top: -18px; font-size: 12px; color: var(--ink); white-space: nowrap; transform: translateX(-50%); }
+.hb-plot { position: absolute; top: 0; bottom: 0; }
+.hb-axis { display: grid; grid-template-columns: minmax(150px, 38%) 1fr var(--hb-extra, 0px); gap: 12px; margin-top: 6px; }
+.hb-ticks { position: relative; height: 18px; border-top: 1px solid var(--axis); }
+.hb-ticks span { position: absolute; top: 3px; font-size: 12px; color: var(--muted); transform: translateX(-50%); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.hb-head { display: grid; grid-template-columns: minmax(150px, 38%) 1fr var(--hb-extra, 0px); gap: 12px; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.hb-head span:last-child { text-align: right; }
+@media (max-width: 560px) {
+  .hb-row, .hb-axis, .hb-head { grid-template-columns: 1fr var(--hb-extra, 0px); column-gap: 10px; }
+  .hb-label { grid-column: 1 / -1; padding: 10px 0 2px; }
+  .hb-track { min-height: 22px; }
+  .hb-axis > div:first-child, .hb-head > span:first-child { display: none; }
+}
+.lc svg { display: block; width: 100%; height: auto; overflow: visible; }
+.lc text { font-family: inherit; font-size: 12px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.tip { position: fixed; z-index: 10; pointer-events: none; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; line-height: 1.45; box-shadow: 0 4px 16px rgba(0,0,0,0.12); max-width: 280px; opacity: 0; transition: opacity 0.1s; }
+.tip b { font-weight: 600; }
+.tip .k { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+.tip .m { color: var(--muted); }
+details.dt { margin-top: 14px; font-size: 14px; }
+details.dt summary { cursor: pointer; color: var(--accent); font-size: 13px; }
+details.dt table { margin-top: 8px; }
+details.dt td, details.dt th { padding: 6px 10px; }
+
+/* layered explainers */
+.explain { margin-top: 16px; display: grid; gap: 12px; }
+.zoom { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+.zoom p { margin: 0; color: var(--muted); font-size: 15px; }
+.zoom p.big { font-size: 17px; color: var(--ink); }
+.zoom-tag { font-family: "JetBrains Mono", monospace; font-size: 12px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 8px; }
+ol.flow { list-style: none; margin: 4px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; counter-reset: none; }
+ol.flow li { position: relative; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px 12px 12px 12px; font-size: 14px; display: flex; flex-direction: column; gap: 4px; }
+ol.flow li b { color: var(--ink); }
+ol.flow li span:not(.n) { color: var(--muted); font-size: 13px; line-height: 1.45; }
+ol.flow .n { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--surface); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+ol.flow li:not(:last-child)::after { content: "→"; position: absolute; right: -10px; top: 50%; transform: translate(50%, -50%); color: var(--muted); font-size: 14px; }
+ol.flow li:last-child::before { content: "↺ repeat"; position: absolute; right: 10px; top: 12px; font-size: 11px; color: var(--muted); }
+@media (max-width: 720px) {
+  ol.flow { grid-template-columns: 1fr; }
+  ol.flow li:not(:last-child)::after { content: "↓"; right: 50%; top: auto; bottom: -5px; transform: translate(50%, 50%); font-size: 16px; color: var(--accent); }
+}
+details.deeper { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 20px; }
+details.deeper summary { cursor: pointer; font-weight: 600; font-size: 15px; color: var(--ink); }
+details.deeper[open] summary { margin-bottom: 12px; }
+details.deeper td { font-size: 13.5px; }
+.tech p { font-size: 14px; color: var(--muted); margin: 0 0 10px; }
+.tech p b { color: var(--ink); }
+.pipe { display: grid; grid-template-columns: minmax(0, 460px) 1fr; gap: 28px; align-items: start; margin-top: 24px; }
+.pipe-fig svg { width: 100%; height: auto; display: block; }
+.pipe-fig figcaption { font-size: 14px; color: var(--muted); margin-top: 10px; }
+ol.pipe-steps { margin: 0; padding-left: 22px; display: grid; gap: 14px; }
+ol.pipe-steps li { font-size: 15px; color: var(--ink); padding-left: 4px; }
+ol.pipe-steps li::marker { color: var(--accent); font-weight: 600; }
+.tech-line { display: block; color: var(--muted); font-size: 13.5px; margin-top: 3px; }
+@media (max-width: 780px) { .pipe { grid-template-columns: 1fr; } }
+.code-steps { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 20px; }
+.explain, .pipe > * { min-width: 0; }
+.explain { grid-template-columns: minmax(0, 1fr); }
+.code-step { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+.code-step > p { margin: 0 0 12px; color: var(--muted); font-size: 15px; }
+.code-step pre { margin: 0 0 10px; }
+pre.out { background: transparent; border: 1px dashed var(--line); font-size: 0.82em; }
+.note-sm { font-size: 13.5px !important; margin: 0 !important; }
+.kw { color: #8a3ffc; } .st { color: #1f7a4d; } .cm { color: var(--muted); font-style: italic; } .nu { color: #b3352b; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .kw { color: #c4a2ff; } :root:not([data-theme="light"]) .st { color: #6fcf9c; } :root:not([data-theme="light"]) .nu { color: #f08c82; } }
+:root[data-theme="dark"] .kw { color: #c4a2ff; } :root[data-theme="dark"] .st { color: #6fcf9c; } :root[data-theme="dark"] .nu { color: #f08c82; }
+
+footer { border-top: 1px solid var(--line); padding: 32px 0 48px; color: var(--muted); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+        <rect x="1" y="1" width="24" height="24" rx="6" fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M7 13.5l4 4 8-9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      Graduate
+    </a>
+    <nav class="links">
+      <a href="#how">How it works</a>
+      <a class="opt" href="#evidence">Proof</a>
+      <a class="opt" href="#status">Status</a>
+      <a class="opt" href="#start">Use it</a>
+      <a href="https://github.com/nstream-ai/graduate-site">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<div class="wrap hero">
+  <span class="eyebrow">Research preview · code coming soon</span>
+  <h1>Prove when your small model is ready to take over.</h1>
+  <p class="lede">Bring your AI agent's logs. Get back a small, cheap model trained on them, plus honest, statistically checked proof of <em>which parts of the work it can safely take over</em> from the big model.</p>
+  <div class="cta">
+    <a class="btn primary" href="https://github.com/nstream-ai/graduate-site">Watch on GitHub for the code</a>
+    <a class="btn" href="#status">See the results so far</a>
+  </div>
+</div>
+
+<section id="problem">
+  <div class="wrap">
+    <h2>The hard part isn't training the small model</h2>
+    <p class="sub">An AI agent asks its model many small questions per conversation: which tool to use, what to fill in, what to reply. Many are routine, and a small model can answer them for a fraction of the cost. The hard part is proving <em>which</em> ones it can take over. Four things make that easy to get wrong:</p>
+    <div class="grid g2">
+      <div class="card"><h3>Calls in a conversation are linked</h3><p>One confusing conversation causes many mistakes at once. Counting each call as separate evidence gave a wrong approval in up to half of our test runs.</p></div>
+      <div class="card"><h3>People check results every day</h3><p>Re-checking until the numbers look good is like flipping a coin until it lands heads: false approvals rose from 5% to 12%.</p></div>
+      <div class="card"><h3>There's often more than one right answer</h3><p>Answering differently from the big model isn't always answering worse, and some checks can't tell the two apart.</p></div>
+      <div class="card"><h3>The answer key has mistakes</h3><p>If the grader misses errors, the small model looks better than it is. Uncorrected, it gave a wrong approval in up to every test run.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <h2>How it works</h2>
+    <p class="sub">Two parts: distil a student from your traces, then grade it on held-out later traffic it has never seen.</p>
+    <div class="grid g3">
+      <div class="card"><div class="step">01 · Ingest</div><h3>One schema for any trace</h3><p>Converters for OpenAI <code>tool_calls</code>, <code>function_call</code>, Hermes, Toucan, Glaive, Python-call and text-embedded commands. Every repair is audited.</p></div>
+      <div class="card"><div class="step">02 · Distil</div><h3>A LoRA student</h3><p>Time-ordered split by session, per-call SFT with LoRA. You get an adapter back; hosting stays yours.</p></div>
+      <div class="card"><div class="step">03 · Graduate</div><h3>A report card per slice</h3><p>Slices are agent node × call type × tool × position. Each gets agreement or non-inferiority bounds and the share of calls and tokens it covers.</p></div>
+    </div>
+<div class="pipe">
+      <figure class="pipe-fig">
+        <svg viewBox="0 0 440 640" role="img" aria-label="Pipeline: agent logs are converted to one format and cut into conversations, calls and slices; conversations are split by time; older ones train the small model; newer, held-out ones are answered by both models; the answers are compared per slice with statistics; the result is a report card saying which slices graduate." style="color:var(--muted)">
+          <defs>
+            <marker id="pa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
+            <marker id="pb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--accent)"/></marker>
+          </defs>
+          <g style="fill:var(--surface);stroke:var(--line);stroke-width:1.5">
+            <rect x="70" y="10" width="300" height="56" rx="10"/>
+            <rect x="20" y="100" width="400" height="56" rx="10"/>
+            <rect x="20" y="200" width="190" height="56" rx="10"/>
+            <rect x="20" y="300" width="190" height="56" rx="10"/>
+            <rect x="20" y="400" width="400" height="56" rx="10"/>
+            <rect x="20" y="500" width="400" height="128" rx="10" style="stroke:var(--ink)"/>
+          </g>
+          <g style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.5">
+            <rect x="230" y="200" width="190" height="56" rx="10"/>
+            <rect x="230" y="300" width="190" height="56" rx="10"/>
+          </g>
+          <g style="fill:none;stroke:currentColor;stroke-width:1.5">
+            <line x1="220" y1="66" x2="220" y2="98" marker-end="url(#pa)"/>
+            <polyline points="220,156 220,182 115,182 115,198" marker-end="url(#pa)"/>
+            <line x1="115" y1="256" x2="115" y2="298" marker-end="url(#pa)"/>
+            <line x1="210" y1="328" x2="228" y2="328" marker-end="url(#pa)"/>
+            <line x1="220" y1="456" x2="220" y2="498" marker-end="url(#pa)"/>
+          </g>
+          <g style="fill:none;stroke:var(--accent);stroke-width:1.5">
+            <polyline points="220,182 325,182 325,198" marker-end="url(#pb)"/>
+            <line x1="325" y1="256" x2="325" y2="298" marker-end="url(#pb)"/>
+            <line x1="325" y1="356" x2="325" y2="398" marker-end="url(#pb)"/>
+          </g>
+          <g style="font-size:13px;font-weight:600;fill:var(--ink)" text-anchor="middle">
+            <text x="220" y="34">Your agent's logs</text>
+            <text x="220" y="124">Conversations → calls → slices</text>
+            <text x="115" y="224">Older conversations</text>
+            <text x="325" y="224">Newer conversations</text>
+            <text x="115" y="324">Small model</text>
+            <text x="325" y="324">Both models answer</text>
+            <text x="220" y="424">Statistics, per slice</text>
+            <text x="220" y="526">Report card</text>
+          </g>
+          <g style="font-size:11.5px;fill:var(--muted)" text-anchor="middle">
+            <text x="220" y="52">OpenAI, Hermes, Toucan, τ² … as JSONL</text>
+            <text x="220" y="142">slice = agent × call type × tool × position</text>
+            <text x="115" y="242">used for training</text>
+            <text x="325" y="242">held out, never trained on</text>
+            <text x="115" y="342">LoRA adapter on your data</text>
+            <text x="325" y="342">the same held-out calls</text>
+            <text x="220" y="442">count conversations · exact betting test · BH</text>
+          </g>
+          <g style="font-size:11.5px;fill:var(--ink)">
+            <text x="232" y="86">1 · ingest into one format</text>
+            <text x="232" y="174">2 · split by time</text>
+            <text x="127" y="282">3 · fine-tune</text>
+            <text x="337" y="382" style="fill:var(--accent)">4 · compare</text>
+            <text x="232" y="482">5 · verdict per slice</text>
+          </g>
+          <g style="font-size:12px;fill:var(--ink)">
+            <circle cx="48" cy="552" r="5" style="fill:var(--good)"/><text x="62" y="556"><tspan font-weight="600">Graduated</tspan> → the small model takes this slice</text>
+            <circle cx="48" cy="578" r="5" style="fill:var(--warn)"/><text x="62" y="582"><tspan font-weight="600">Not yet</tspan> → needs about N more conversations</text>
+            <circle cx="48" cy="604" r="5" style="fill:var(--bad)"/><text x="62" y="608"><tspan font-weight="600">No</tspan> → stays with the big model</text>
+          </g>
+        </svg>
+        <figcaption>The blue path is the one that makes the result trustworthy: the conversations used to judge the small model are newer than, and separate from, the ones it learned from.</figcaption>
+      </figure>
+      <ol class="pipe-steps">
+        <li><b>Bring your logs.</b> The conversations your agent already had with its big model.<span class="tech-line">Converters for OpenAI <code>tool_calls</code>, <code>function_call</code>, Hermes, Toucan, Glaive, Python-call and text commands; every repair is recorded.</span></li>
+        <li><b>Cut them into slices.</b> A slice is one kind of decision, like "look up a reservation at the start of a chat".<span class="tech-line">Slice = agent node × call type (tool or text) × tool × position bucket in the session.</span></li>
+        <li><b>Split by time.</b> Older conversations teach; newer ones test. The test set is never used for training, and never reused.<span class="tech-line">Time-ordered split by session into train / dev / calibration; dev chooses thresholds, calibration certifies.</span></li>
+        <li><b>Train the small model.</b> A cheap model learns to copy the big model's decisions.<span class="tech-line">Per-call supervised fine-tuning with LoRA; you get an adapter back.</span></li>
+        <li><b>Compare on new conversations.</b> Both models answer the same held-out calls; Graduate counts where they differ.<span class="tech-line">Gates: disagreement, invalid call, extra field, verbose reply. Per-session counts under a router cap.</span></li>
+        <li><b>Get a verdict per slice.</b> Each slice graduates, needs more evidence, or stays with the big model, plus how much traffic and cost that covers.<span class="tech-line">Anytime-valid betting test per slice, Benjamini–Hochberg across slices, δ = 0.05.</span></li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section id="evidence">
+  <div class="wrap">
+    <h2>The statistics are checked before they're trusted</h2>
+    <p class="sub">Every adopted method held its promised 5% false-certification rate in every simulation grid and on a week of real agent traffic (197k tool calls) used as a population with exact truth. Common shortcuts did not.</p>
+    <div class="card chart-card">
+      <h3>How often each method wrongly certifies a slice</h3>
+      <p class="chart-sub">Worst rate seen across all tests, log scale. A method is safe if its bar stops at the 5% line (shaded band: simulation noise).</p>
+      <div id="chart-validity"></div>
+    </div>
+
+    <div class="explain">
+      <div class="zoom">
+        <div class="zoom-tag">In one sentence</div>
+        <p class="big">Graduate makes a promise: <b>when it says "this part of the work is safe to hand to the small model", it is wrong at most 5 times out of 100.</b> This chart checks whether that promise holds, and shows that the usual shortcuts break it.</p>
+      </div>
+
+      <div class="zoom">
+        <div class="zoom-tag">An everyday picture</div>
+        <p>Think of a building inspector who promises to sign off on an unsafe building no more than 1 time in 20. You can't trust that promise by reading the inspector's method. You test it: build many buildings that are <em>just barely</em> unsafe, send the inspector, and count how often they sign off anyway. If it's 1 in 20 or less, the promise holds. If it's 1 in 2, it doesn't.</p>
+      </div>
+
+      <div class="zoom">
+        <div class="zoom-tag">How we tested it</div>
+        <ol class="flow" aria-label="The test loop: build a world where the small model is exactly at the 5% limit, run the check, count whether it wrongly said safe, repeat 1,000 times.">
+          <li><span class="n">1</span><b>Build a test world</b><span>where the small model's real error rate is exactly 5%: just over the line, the hardest case to catch</span></li>
+          <li><span class="n">2</span><b>Run the check</b><span>on conversations drawn from that world, exactly as it would run on real traffic</span></li>
+          <li><span class="n">3</span><b>Did it say "safe"?</b><span>That's a wrong certification. Count it.</span></li>
+          <li><span class="n">4</span><b>Repeat 1,000 times</b><span>The share of wrong "safe" verdicts is the bar in the chart</span></li>
+        </ol>
+        <p style="margin-top:12px">We did this on made-up data with many different shapes, and on a real week of agent traffic (197k tool calls) where we knew the right answers. <b>Bar stops at the line: the promise holds. Bar crosses the line: the promise is broken.</b></p>
+      </div>
+
+      <details class="deeper">
+        <summary>Go deeper: why each shortcut breaks the promise</summary>
+        <div class="table-scroll">
+        <table>
+          <thead><tr><th>Shortcut</th><th>What it quietly assumes</th><th>Why that's false for agents</th><th>What Graduate does instead</th></tr></thead>
+          <tbody>
+            <tr><td>All calls treated as independent</td><td>1,000 calls are 1,000 separate pieces of evidence</td><td>Calls in one conversation share the same user and context: one confusing conversation produces many mistakes at once. 1,000 calls from 20 conversations is closer to 20 pieces of evidence</td><td>Counts <b>conversations</b>, not calls</td></tr>
+            <tr><td>Cluster-robust CLT</td><td>Averages follow a bell curve</td><td>Conversation lengths are extremely uneven (median 39 calls, some over 4,000), so the bell-curve approximation is too optimistic even at 4,000 conversations</td><td>Uses an <b>exact</b> test with no bell-curve approximation</td></tr>
+            <tr><td>MAPIE with calls as independent</td><td>A correct library is enough</td><td>The library is right, but it is fed the wrong unit (calls instead of conversations)</td><td>Same maths, fed conversations; matches MAPIE exactly when data really is independent</td></tr>
+            <tr><td>One call per conversation</td><td>Any one call stands for the whole conversation</td><td>Long conversations are harder and contain most of the calls, but get the same weight as short ones</td><td>Samples in proportion to length and caps how many calls per conversation the small model may take</td></tr>
+            <tr><td>Re-run a fixed test at 10 looks</td><td>You look at the result once</td><td>Teams check every day. Checking until it looks good is like flipping a coin until it lands heads</td><td>A <b>betting test</b> that stays valid however often you look</td></tr>
+            <tr><td>Extractor or labels miss errors</td><td>The answer key is right</td><td>If the grader misses mistakes, the small model looks better than it is</td><td>Audits the grader's miss rate and tightens the limit to match</td></tr>
+          </tbody>
+        </table>
+        </div>
+      </details>
+
+      <details class="deeper">
+        <summary>Go deeper still: the technical definition</summary>
+        <div class="tech">
+          <p><b>What is measured.</b> For a slice with true per-call error <i>p</i> and claim <i>p</i> ≤ α (α = 5%), a false certification is a certificate issued when <i>p</i> ≥ α. Each bar is the worst observed P(certify | <i>p</i> = α) over all simulation settings: the boundary null, where a valid test is hardest to keep valid. With many slices it is the family-wise error rate.</p>
+          <p><b>The band.</b> Each rate comes from 1,000 replications, so a true 5% shows up anywhere up to about 5% + 2·√(0.05·0.95/1000) ≈ 6.4%. The shaded band is that Monte Carlo tolerance.</p>
+          <p><b>Settings covered.</b> Session random effects σ ∈ [0, 3] on the logit scale, 3–30 calls per session, 5–80 slices, cross-slice correlation up to 0.9, and the FreeInference week used as a finite population with exact truth.</p>
+          <p><b>The betting test.</b> With per-session statistic X<sub>i</sub> = errors<sub>i</sub> − α·accepted<sub>i</sub>, the capital K<sub>t</sub> = ∏(1 − λ<sub>i</sub>X<sub>i</sub>), with predictable bets λ<sub>i</sub> ∈ [0, c/U], is a non-negative supermartingale under H₀: E[X] ≥ 0. Ville's inequality gives P(sup<sub>t</sub> K<sub>t</sub> ≥ 1/δ) ≤ δ, so p = 1/max K is valid at every look. Graduate averages bettors over c ∈ {0.5, 0.75, 0.9, 0.99}.</p>
+          <p><b>Across slices.</b> Benjamini–Hochberg at δ = 0.05 by default. The full validity report and the design records behind it will be published with the code.</p>
+        </div>
+      </details>
+    </div>
+
+    <div class="grid g2" style="margin-top:16px">
+      <div class="card chart-card">
+        <h3>Proof needs conversations</h3>
+        <p class="chart-sub">Minimum test conversations to prove an error rate is below the limit, even if the model makes zero mistakes (95% confidence, one slice).</p>
+        <div id="chart-floor"></div>
+      </div>
+      <div class="card chart-card">
+        <h3>Covering more traffic costs more evidence</h3>
+        <p class="chart-sub">Real agent traffic: chance of certifying a slice that truly is 1 point under the limit. Each line lets the small model handle a different share of calls.</p>
+        <div id="chart-tradeoff"></div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<section id="status">
+  <div class="wrap">
+    <h2>Where it stands</h2>
+    <p class="sub">Honest results so far: the statistics work; the students aren't good enough yet, or we don't have enough test conversations to prove they are. Each verdict was pre-registered before the run.</p>
+
+    <div class="card" style="margin-bottom:20px">
+      <h3>How to read a verdict</h3>
+      <p style="margin-bottom:12px">Each result answers one question: <b>how much of the traffic could we hand to the small model, with proof that it gets at most 5% of those calls wrong?</b></p>
+      <div class="grid g3">
+        <div><span class="pill yes">X% certified</span><p style="margin-top:6px">X% of real calls could go to the small model. For those calls we are 95% sure its error rate is at most 5%.</p></div>
+        <div><span class="pill no">Nothing certified at 5%</span><p style="margin-top:6px">We could not prove the 5% limit for <em>any</em> slice of traffic, so every call stays with the big model. It does <em>not</em> mean the small model is wrong 95% of the time.</p></div>
+        <div><span class="pill no">Not graduated</span><p style="margin-top:6px">The final end-to-end test of the mixed system (small + big model) didn't pass both of its bars: <em>no worse</em> than the big model alone, and <em>useful</em> (the small model handles at least 10% of turns).</p></div>
+      </div>
+      <p style="margin-top:14px"><b>Example.</b> On a slice where the small model made 0 mistakes in 95 conversations, that sounds safe. But with 7 slices tested at once, 95 conversations is still too few to rule out a 5% error rate, so it isn't certified. Roughly three times more test conversations would likely certify it.</p>
+    </div>
+
+    <div class="card chart-card" style="margin-bottom:16px">
+      <h3>The students are getting better</h3>
+      <p class="chart-sub">How often the student makes exactly the same tool call (tool and arguments) as the big model, on held-out conversations. Right column: share of traffic certified at the 5% limit.</p>
+      <div id="chart-agreement"></div>
+    </div>
+
+    <div class="grid g2" style="margin-bottom:16px">
+      <div class="card chart-card">
+        <h3>Where the first student went wrong</h3>
+        <p class="chart-sub">Qwen2.5-0.5B on 5,064 of the big model's tool calls (Nemotron). Share of calls by outcome.</p>
+        <div id="chart-fails"></div>
+      </div>
+      <div class="card chart-card">
+        <h3>Finishing whole tasks (τ²-bench retail)</h3>
+        <p class="chart-sub">Share of write tasks where the store's database ended up correct.</p>
+        <div id="chart-tau2"></div>
+      </div>
+    </div>
+
+    <div class="table-scroll card" style="padding:0">
+    <table>
+      <thead><tr><th>Experiment</th><th>Student</th><th>Matches the big model's tool call</th><th>Verdict</th><th>In plain words</th></tr></thead>
+      <tbody>
+        <tr><td>Nemotron customer-service agents</td><td>Qwen2.5-0.5B, 8k examples</td><td class="num">33%</td><td><span class="pill no">Nothing certified at 5%</span></td><td>Too inaccurate: wrong tool or wrong arguments on 2 of 3 tool calls.</td></tr>
+        <tr><td>Nemotron customer-service agents</td><td>Gemma 4 E2B, 1k</td><td class="num">40%</td><td><span class="pill wait">2.5% certified</span></td><td>Could take 2.5% of calls, all of them "reply in text instead of calling a tool". The reply's wording isn't checked.</td></tr>
+        <tr><td>Nemotron customer-service agents</td><td>Gemma 4 E4B, 1k</td><td class="num">43%</td><td><span class="pill wait">3.0% certified</span></td><td>Same as above: 3% of calls, text replies only.</td></tr>
+        <tr><td>τ²-bench retail vs Gemini 2.5 Flash</td><td>Qwen2.5-3B</td><td class="num">81%</td><td><span class="pill no">Nothing certified at 5%</span></td><td>Much better, but not enough test conversations to prove ≤ 5% errors anywhere. At a looser 10% limit, 9% of calls would qualify.</td></tr>
+        <tr><td>τ²-bench retail vs Gemini 2.5 Flash</td><td>Qwen3-8B, 2k</td><td class="num">79%</td><td><span class="pill no">Not graduated</span></td><td>Nothing certified, so the mixed system sent it 0 turns. Alone it finished 33% of tasks correctly; Gemini finished 53%.</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="grid g2" style="margin-top:20px">
+      <div class="card"><h3>Built</h3>
+        <ul class="tight" style="color:var(--muted);font-size:15px">
+          <li>Statistics library (<code>graduate.certify</code>), typed, tested</li>
+          <li>Trace schema v0.3 and converters</li>
+          <li>Report card and a CPU end-to-end baseline</li>
+          <li>LoRA training and vLLM evaluation on GPU</li>
+        </ul>
+      </div>
+      <div class="card"><h3>Next</h3>
+        <ul class="tight" style="color:var(--muted);font-size:15px">
+          <li>Stronger students on the slices that fail (escalation, free-text arguments)</li>
+          <li>Context distillation and on-policy correction</li>
+          <li>A trained defer head and a gated router</li>
+          <li>Shadow mode with a restarting drift detector</li>
+        </ul>
+      </div>
+    </div>
+    <p class="note" style="margin-top:20px"><b>Why nothing graduated yet:</b> evidence, not the model, is the bottleneck. At a 3–5% claim a slice needs hundreds to ~1,000 independent sessions, and the students still disagree with the teacher on when to escalate and on free-text arguments.</p>
+  </div>
+</section>
+
+<section id="start">
+  <div class="wrap">
+    <h2>Use it from Python</h2>
+    <p class="sub">Each example builds on the one before, from loading logs to the statistics underneath.</p>
+    <p class="note"><b>Code coming soon.</b> The library isn't public yet. These examples run today against the private preview and will work as written once it's released. <a href="https://github.com/nstream-ai/graduate-site">Watch the repo on GitHub</a> to hear when it lands.</p>
+
+
+    <div class="code-steps">
+      <div class="code-step">
+        <div class="zoom-tag">1 · Load your agent's logs</div>
+        <p>Turn a JSONL file of chat logs into conversations. Each line is one conversation in OpenAI chat format (<code>messages</code>, optional <code>tools</code>). Other presets: <code>hermes</code>, <code>toucan</code>, <code>nemotron</code>, <code>tau2</code>.</p>
+<pre><code><span class="kw">from</span> graduate.ingest <span class="kw">import</span> ingest, report
+<span class="kw">from</span> graduate.core <span class="kw">import</span> slice_of
+
+sessions = list(ingest(<span class="st">"traces.jsonl"</span>, preset=<span class="st">"openai"</span>))
+print(report(sessions))          <span class="cm"># calls, tool calls, repairs, missing context</span>
+
+s = sessions[0]
+<span class="kw">for</span> call <span class="kw">in</span> s.calls:
+    print(slice_of(s, call))
+<span class="cm"># agent/tool/get_reservation_details/1</span>
+<span class="cm"># agent/text/-/2-3</span></code></pre>
+      </div>
+
+      <div class="code-step">
+        <div class="zoom-tag">2 · Split by time</div>
+        <p>Older conversations train the small model; newer ones are kept aside to judge it.</p>
+<pre><code><span class="kw">from</span> graduate.core <span class="kw">import</span> split_sessions
+
+split = split_sessions(sessions)   <span class="cm"># train 70% / dev 10% / calibration 20%, by time when timestamps exist</span>
+train, dev, held_out = split[<span class="st">"train"</span>], split[<span class="st">"dev"</span>], split[<span class="st">"calibration"</span>]</code></pre>
+      </div>
+
+      <div class="code-step">
+        <div class="zoom-tag">3 · Get the report card</div>
+        <p>Give it one row per held-out call: which slice it's in, which conversation it came from, and whether the small model disagreed with the big one. Rows go in arrival order.</p>
+<pre><code><span class="kw">from</span> graduate.certify.card <span class="kw">import</span> report_card
+
+card = report_card(
+    slice_keys,     <span class="cm"># e.g. "support/tool/get_reservation_details"</span>
+    session_ids,    <span class="cm"># conversation id of each call</span>
+    wrong=disagree, <span class="cm"># True where the small model differs from the big model</span>
+    alpha=<span class="nu">0.05</span>,     <span class="cm"># the promise: at most 5% of handed-over calls wrong</span>
+    delta=<span class="nu">0.05</span>,     <span class="cm"># ...with 95% confidence</span>
+    cap=<span class="nu">5</span>,          <span class="cm"># the small model takes at most 5 calls per conversation</span>
+)
+print(card.render())</code></pre>
+<pre class="out"><code>slice                                  cap  sess  calls   rate  upper      p  share  verdict
+support/tool/get_reservation_details     5  1500   2727  0.008  0.016  0.000  0.602  GRADUATED
+support/tool/transfer_to_human           5  1192   1805  0.414  0.456  1.000  0.398  -
+
+gates: disagree &lt;= 0.05; delta 0.05; cap 5 per session; bh across 2 slices; 4,532 calls
+certified coverage: 60.2% of calls, 60.2% of tokens</code></pre>
+        <p class="note-sm">Read it as: the lookup slice graduates (its error is at most 1.6% with 95% confidence) and covers 60% of calls; handoffs stay with the big model. Output from synthetic data.</p>
+      </div>
+
+      <div class="code-step">
+        <div class="zoom-tag">4 · One slice, by hand</div>
+        <p>The building blocks. Zero mistakes in 95 conversations: how sure can we be that the error rate is under 5%?</p>
+<pre><code><span class="kw">from</span> graduate.certify.stats <span class="kw">import</span> clopper_pearson_upper, risk_pvalue
+
+clopper_pearson_upper(errors=<span class="nu">0</span>, n=<span class="nu">95</span>, delta=<span class="nu">0.05</span>)  <span class="cm"># 0.031: error is at most 3.1%</span>
+risk_pvalue(errors=<span class="nu">0</span>, n=<span class="nu">95</span>, alpha=<span class="nu">0.05</span>)          <span class="cm"># 0.0077: passes alone, but not after</span>
+                                                  <span class="cm"># correcting for 7 slices tested at once</span></code></pre>
+      </div>
+
+      <div class="code-step">
+        <div class="zoom-tag">5 · Check every day without breaking the promise</div>
+        <p>For shadow mode, where you look at results as they arrive. Inputs are per-conversation counts: mistakes, and calls the small model handled.</p>
+<pre><code><span class="kw">from</span> graduate.certify.stats <span class="kw">import</span> betting_risk_test
+
+test = betting_risk_test(
+    errors=errors_per_session, accepted=handled_per_session,
+    alpha=<span class="nu">0.05</span>, cap=<span class="nu">5</span>, c=(<span class="nu">0.5</span>, <span class="nu">0.75</span>, <span class="nu">0.9</span>, <span class="nu">0.99</span>),
+)
+test.pvalue        <span class="cm"># valid however many times you've looked</span>
+test.capital       <span class="cm"># the evidence path, one value per conversation</span></code></pre>
+      </div>
+
+      <div class="code-step">
+        <div class="zoom-tag">6 · How many more conversations?</div>
+        <p>Plan before you collect. A slice with about 2% errors, which the small model handles in 40% of conversations, with 300 collected so far:</p>
+<pre><code><span class="kw">from</span> graduate.certify.stats <span class="kw">import</span> plan_evidence
+
+plan_evidence(risk_estimate=<span class="nu">0.02</span>, coverage=<span class="nu">0.4</span>, sessions_collected=<span class="nu">300</span>, alpha=<span class="nu">0.05</span>)
+<span class="cm"># EvidencePlan(accepted_needed=286, sessions_needed=715, more_sessions=415, power=0.8)</span></code></pre>
+      </div>
+    </div>
+
+    <p class="sub" style="margin-top:24px">Training and evaluation on GPU currently run from research scripts; a packaged command line is planned. The repo uses only openly licensed traces from open-weight models. If you bring traces from a commercial API, its terms on training other models apply to you.</p>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Graduate · Apache-2.0 · by <a href="https://github.com/nstream-ai">nstream-ai</a></span>
+    <span>Code coming soon · <a href="https://github.com/nstream-ai/graduate-site">GitHub</a></span>
+  </div>
+</footer>
+
+<div class="tip" id="tip" role="tooltip"></div>
+<script>
+(() => {
+  const tip = document.getElementById('tip');
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const h = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+  const pct = (v, d = 1) => (+v.toFixed(d)).toString() + '%';
+  const key = c => `<span class="k" style="background:var(${c})"></span>`;
+
+  function moveTip(e) {
+    const pad = 14, w = tip.offsetWidth, ht = tip.offsetHeight;
+    let x = e.clientX + pad, y = e.clientY + pad;
+    if (x + w > innerWidth - 8) x = e.clientX - w - pad;
+    if (y + ht > innerHeight - 8) y = e.clientY - ht - pad;
+    tip.style.left = Math.max(8, x) + 'px'; tip.style.top = Math.max(8, y) + 'px';
+  }
+  const showTip = (html, e) => { tip.innerHTML = html; tip.style.opacity = 1; moveTip(e); };
+  const hideTip = () => { tip.style.opacity = 0; };
+
+  function legend(items, line) {
+    const l = h('div', 'legend');
+    items.forEach(([name, color]) => l.appendChild(h('span', null, `<i class="${line ? 'line' : ''}" style="background:var(${color})"></i>${esc(name)}`)));
+    return l;
+  }
+
+  function dataTable(cols, rows) {
+    const d = h('details', 'dt');
+    d.appendChild(h('summary', null, 'Show the data as a table'));
+    const t = '<div class="table-scroll"><table><thead><tr>' + cols.map(c => `<th>${esc(c)}</th>`).join('') + '</tr></thead><tbody>' +
+      rows.map(r => '<tr>' + r.map((c, i) => `<td${i ? ' class="num"' : ''}>${esc(c)}</td>`).join('') + '</tr>').join('') + '</tbody></table></div>';
+    d.insertAdjacentHTML('beforeend', t);
+    return d;
+  }
+
+  // Horizontal bars in HTML: responsive without re-rendering.
+  function hbars(id, o) {
+    const root = document.getElementById(id);
+    root.classList.add('hb');
+    if (o.extraWidth) root.style.setProperty('--hb-extra', o.extraWidth);
+    if (o.legend) root.appendChild(legend(o.legend));
+    const lmin = o.log ? Math.log10(o.min) : 0, lmax = o.log ? Math.log10(o.max) : 0;
+    const pos = o.log ? v => (Math.log10(Math.max(v, o.min)) - lmin) / (lmax - lmin) * 100 : v => v / o.max * 100;
+    if (o.extraHead) { const hd = h('div', 'hb-head'); hd.append(h('span'), h('span'), h('span', null, esc(o.extraHead))); root.appendChild(hd); }
+    o.rows.forEach(r => {
+      if (r.group) { root.appendChild(h('div', 'hb-group', esc(r.group))); return; }
+      const row = h('div', 'hb-row');
+      row.appendChild(h('div', 'hb-label', esc(r.label)));
+      const tr = h('div', 'hb-track');
+      tr.style.alignSelf = 'stretch';
+      tr.style.height = 'auto';
+      if (o.band) { const b = h('div', 'hb-band'); b.style.left = pos(o.band[0]) + '%'; b.style.width = (pos(o.band[1]) - pos(o.band[0])) + '%'; tr.appendChild(b); }
+      if (o.ref != null) { const l = h('div', 'hb-ref'); l.style.left = pos(o.ref) + '%'; tr.appendChild(l); }
+      const p = pos(r.v);
+      const bar = h('div', 'hb-bar');
+      Object.assign(bar.style, { width: p + '%', top: '50%', transform: 'translateY(-50%)', background: `var(${r.color || '--s1'})` });
+      tr.appendChild(bar);
+      const val = h('div', 'hb-val', esc(o.fmt(r.v)));
+      Object.assign(val.style, { left: p + '%', top: '50%', transform: 'translateY(-50%)' });
+      tr.appendChild(val);
+      row.appendChild(tr);
+      if (o.extra) row.appendChild(h('div', 'hb-extra', o.extra(r)));
+      row.addEventListener('mousemove', e => showTip(o.tip(r), e));
+      row.addEventListener('mouseleave', hideTip);
+      root.appendChild(row);
+    });
+    const ax = h('div', 'hb-axis');
+    const ticks = h('div', 'hb-ticks');
+    o.ticks.forEach(t => { const s = h('span', null, esc(o.tickFmt(t))); s.style.left = pos(t) + '%'; ticks.appendChild(s); });
+    if (o.ref != null && o.refLabel) { const s = h('span', null, `<b style="color:var(--ink)">${esc(o.refLabel)}</b>`); s.style.left = pos(o.ref) + '%'; s.style.top = '20px'; ticks.style.height = '38px'; ticks.appendChild(s); }
+    ax.append(h('div'), ticks, h('div'));
+    root.appendChild(ax);
+    if (o.table) root.appendChild(dataTable(o.table.cols, o.table.rows));
+  }
+
+  // Line chart in SVG, redrawn on resize.
+  function lines(id, o) {
+    const root = document.getElementById(id);
+    root.classList.add('lc');
+    if (o.series.length > 1) root.appendChild(legend(o.series.map(s => [s.name, s.color]), true));
+    const holder = h('div');
+    root.appendChild(holder);
+    if (o.table) root.appendChild(dataTable(o.table.cols, o.table.rows));
+    let lastW = 0;
+    function draw() {
+      const W = Math.max(260, Math.round(holder.clientWidth));
+      if (W === lastW) return;
+      lastW = W;
+      const H = o.height || 240, m = { l: 44, r: 18, t: 14, b: 44 };
+      const xmin = o.xmin, xmax = o.xmax;
+      const X = o.xlog
+        ? v => m.l + (Math.log(v) - Math.log(xmin)) / (Math.log(xmax) - Math.log(xmin)) * (W - m.l - m.r)
+        : v => m.l + (v - xmin) / (xmax - xmin) * (W - m.l - m.r);
+      const Y = v => m.t + (1 - (v - o.ymin) / (o.ymax - o.ymin)) * (H - m.t - m.b);
+      let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(o.aria)}">`;
+      o.yticks.forEach(t => {
+        s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(t)}" y2="${Y(t)}" style="stroke:var(${t === o.ymin ? '--axis' : '--grid'});stroke-width:1"/>`;
+        s += `<text x="${m.l - 8}" y="${Y(t) + 4}" text-anchor="end">${esc(o.yfmt(t))}</text>`;
+      });
+      o.xticks.forEach(t => { s += `<text x="${X(t)}" y="${H - m.b + 18}" text-anchor="middle">${esc(o.xfmt(t))}</text>`; });
+      s += `<text x="${m.l + (W - m.l - m.r) / 2}" y="${H - 4}" text-anchor="middle">${esc(o.xtitle)}</text>`;
+      s += `<line class="xh" x1="0" x2="0" y1="${m.t}" y2="${H - m.b}" style="stroke:var(--axis);stroke-width:1;opacity:0"/>`;
+      o.series.forEach(se => {
+        const d = se.pts.map(([x, y], i) => `${i ? 'L' : 'M'}${X(x).toFixed(1)},${Y(y).toFixed(1)}`).join('');
+        s += `<path d="${d}" style="fill:none;stroke:var(${se.color});stroke-width:2;stroke-linejoin:round;stroke-linecap:round"/>`;
+      });
+      o.series.forEach(se => se.pts.forEach(([x, y]) => {
+        s += `<circle cx="${X(x)}" cy="${Y(y)}" r="4" style="fill:var(${se.color});stroke:var(--surface);stroke-width:2"/>`;
+      }));
+      (o.notes || []).forEach(([x, y, text, anchor]) => {
+        s += `<text x="${X(x) + (anchor === 'end' ? -10 : 10)}" y="${Y(y) - 8}" text-anchor="${anchor || 'start'}" style="fill:var(--ink);font-weight:600">${esc(text)}</text>`;
+      });
+      s += `<rect x="${m.l}" y="0" width="${W - m.l - m.r}" height="${H - m.b}" style="fill:transparent"/></svg>`;
+      holder.innerHTML = s;
+      const svg = holder.querySelector('svg'), xh = svg.querySelector('.xh'), hit = svg.querySelector('rect');
+      const xs = o.series[0].pts.map(p => p[0]);
+      hit.addEventListener('mousemove', e => {
+        const r = svg.getBoundingClientRect();
+        const px = (e.clientX - r.left) * W / r.width;
+        let best = xs[0];
+        xs.forEach(x => { if (Math.abs(X(x) - px) < Math.abs(X(best) - px)) best = x; });
+        xh.setAttribute('x1', X(best)); xh.setAttribute('x2', X(best)); xh.style.opacity = 1;
+        showTip(o.tip(best), e);
+      });
+      hit.addEventListener('mouseleave', () => { xh.style.opacity = 0; hideTip(); });
+    }
+    draw();
+    new ResizeObserver(draw).observe(holder);
+  }
+
+  // 1. Validity: worst false-certification rate (research/sim/figures.py, ADRs 0002–0007, 0011, 0012).
+  const shortcuts = [
+    ['All calls treated as independent (strong clustering)', 0.485],
+    ['Cluster-robust CLT, real long sessions', 0.101],
+    ['MAPIE with calls as independent, real traffic', 0.220],
+    ['One call per session, long sessions harder', 1.000],
+    ['Fixed test re-run at 10 looks (peeking)', 0.118],
+    ['Extractor misses 10% of disagreements', 0.070],
+    ['Labels miss 30% of errors', 1.000],
+  ];
+  const ours = [
+    ['One call per session + exact test', 0.043],
+    ['Thinned + exact test (per-call claim)', 0.059],
+    ['Betting mixture, real long sessions', 0.026],
+    ['Extractor / label audit correction', 0.003],
+    ['Paired claim B', 0.002],
+  ];
+  hbars('chart-validity', {
+    log: true, min: 0.001, max: 2.2, ref: 0.05, band: [0.05, 0.064], refLabel: '5% promised',
+    ticks: [0.001, 0.01, 0.1, 1], tickFmt: t => pct(t * 100), fmt: v => pct(v * 100),
+    legend: [['Common shortcut', '--s2'], ['Method Graduate uses', '--s1']],
+    rows: [{ group: 'Common shortcuts' }, ...shortcuts.map(([label, v]) => ({ label, v, color: '--s2', kind: 'shortcut' })),
+           { group: 'Methods Graduate uses' }, ...ours.map(([label, v]) => ({ label, v, color: '--s1', kind: 'ours' }))],
+    tip: r => `<b>${esc(r.label)}</b><br>${key(r.color)}Wrongly certified up to <b>${pct(r.v * 100)}</b> of the time<br><span class="m">${r.v <= 0.064 ? 'Within the promised 5% (plus simulation noise)' : (r.v / 0.05).toFixed(1) + '× the promised 5%'}</span>`,
+    table: { cols: ['Method', 'Type', 'Worst false-certification rate'], rows: [...shortcuts.map(([l, v]) => [l, 'shortcut', pct(v * 100)]), ...ours.map(([l, v]) => [l, 'Graduate', pct(v * 100)])] },
+  });
+
+  // 2. Evidence floor: zero observed errors, one-sided exact 95% bound.
+  const floorN = e => Math.ceil(Math.log(0.05) / Math.log(1 - e / 100));
+  const limits = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  lines('chart-floor', {
+    aria: 'Line chart: conversations needed falls from 299 at a 1% limit to 59 at 5% and 29 at 10%.',
+    series: [{ name: 'Conversations needed', color: '--s1', pts: limits.map(e => [e, floorN(e)]) }],
+    xmin: 1, xmax: 10, xticks: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], xfmt: t => t + '%', xtitle: 'Error limit to prove',
+    ymin: 0, ymax: 320, yticks: [0, 100, 200, 300], yfmt: t => t,
+    notes: [[1, floorN(1), floorN(1) + ' at 1%'], [5, floorN(5), floorN(5) + ' at 5%']],
+    tip: x => `<b>Prove errors ≤ ${x}%</b><br>${key('--s1')}At least <b>${floorN(x)}</b> conversations, with zero mistakes<br><span class="m">More if the model makes any mistakes or several slices are tested together</span>`,
+    table: { cols: ['Error limit', 'Conversations needed (zero mistakes)'], rows: limits.map(e => [e + '%', floorN(e)]) },
+  });
+
+  // 3. Real-traffic trade-off (ADR 0007).
+  const caps = [
+    { name: 'Handles 10% of calls', cap: 10, color: '--s1', p: [0.88, 1, 1] },
+    { name: 'Handles 51% of calls', cap: 100, color: '--s2', p: [0.79, 1, 1] },
+    { name: 'Handles 79% of calls', cap: 342, color: '--s3', p: [0, 0.72, 1] },
+    { name: 'Handles 92% of calls', cap: 920, color: '--s4', p: [0, 0, 0.43] },
+  ];
+  const ns = [1000, 2000, 4000];
+  lines('chart-tradeoff', {
+    aria: 'Line chart: with 1,000 conversations, covering 10% or 51% of calls certifies most of the time; covering 79% needs 2,000 to 4,000; covering 92% certifies only 43% of the time even at 4,000.',
+    series: caps.map(c => ({ name: c.name, color: c.color, pts: ns.map((n, i) => [n, c.p[i]]) })),
+    xmin: 1000, xmax: 4000, xlog: true, xticks: ns, xfmt: t => t.toLocaleString('en-US'), xtitle: 'Test conversations',
+    ymin: 0, ymax: 1, yticks: [0, 0.25, 0.5, 0.75, 1], yfmt: t => Math.round(t * 100) + '%',
+    tip: n => `<b>${n.toLocaleString('en-US')} conversations</b><br>` + caps.map(c => `${key(c.color)}${esc(c.name)}: <b>${Math.round(c.p[ns.indexOf(n)] * 100)}%</b>`).join('<br>') + '<br><span class="m">Chance the slice gets certified</span>',
+    table: { cols: ['Share of calls handled', 'Router cap (calls/session)', '1,000', '2,000', '4,000'], rows: caps.map(c => [c.name.replace('Handles ', ''), c.cap, ...c.p.map(p => Math.round(p * 100) + '%')]) },
+  });
+
+  // 4. Student agreement and certified coverage (reports 03 and 04).
+  const students = [
+    { group: 'Nemotron customer-service agents' },
+    { label: 'Qwen2.5-0.5B · 1k examples', v: 23.2, cert: '–', note: 'No confidence scores, so not scored for coverage' },
+    { label: 'Qwen2.5-0.5B · 2k', v: 28.1, cert: '–', note: 'No confidence scores, so not scored for coverage' },
+    { label: 'Qwen2.5-0.5B · 4k', v: 29.2, cert: '0%' },
+    { label: 'Qwen2.5-0.5B · 8k', v: 33.4, cert: '0%' },
+    { label: 'Qwen2.5-1.5B · 1k', v: 31.0, cert: '0%' },
+    { label: 'Gemma 4 E2B · 1k', v: 39.9, cert: '2.5%', note: 'Certified slice is text replies only; wording not checked' },
+    { label: 'Gemma 4 E4B · 1k', v: 43.3, cert: '3.0%', note: 'Certified slice is text replies only; wording not checked' },
+    { group: 'τ²-bench retail (big model: Gemini 2.5 Flash)' },
+    { label: 'Qwen2.5-3B · 5.7k', v: 81, cert: '0%', note: 'Not enough test conversations; 9.1% would pass at a 10% limit', bench: 2 },
+    { label: 'Qwen3-8B · 2k', v: 79, cert: '0%', note: 'Not enough test conversations; 5.5% would pass at a 10% limit', bench: 2 },
+  ];
+  students.forEach(r => { if (!r.group) r.color = r.bench === 2 ? '--s2' : '--s1'; });
+  hbars('chart-agreement', {
+    max: 100, ticks: [0, 25, 50, 75, 100], tickFmt: t => t + '%', fmt: v => pct(v),
+    legend: [['Nemotron customer service', '--s1'], ['τ²-bench retail', '--s2']],
+    extraWidth: '72px', extraHead: 'Certified',
+    extra: r => r.cert === '0%' || r.cert === '–' ? esc(r.cert) : `<b>${esc(r.cert)}</b>`,
+    rows: students,
+    tip: r => `<b>${esc(r.label)}</b><br>${key(r.color)}Same tool and arguments: <b>${pct(r.v)}</b><br>Certified at 5%: <b>${esc(r.cert)}</b>` + (r.note ? `<br><span class="m">${esc(r.note)}</span>` : ''),
+    table: { cols: ['Student', 'Benchmark', 'Same tool + arguments', 'Certified at 5%'], rows: students.filter(r => !r.group).map(r => [r.label, r.bench === 2 ? 'τ²-bench retail' : 'Nemotron', pct(r.v), r.cert]) },
+  });
+
+  // 5. Where the first student went wrong (report 02).
+  const fails = [
+    { label: 'Same tool and arguments', v: 34, color: '--s3', why: 'Exact match with the big model' },
+    { label: 'Wrong tool', v: 34.9, color: '--s2', why: 'Mostly when to hand off to a human: it looked something up instead' },
+    { label: 'Right tool, wrong value', v: 25.5, color: '--s2', why: 'Mostly free-text arguments such as a handoff summary; exact matching can\'t credit a paraphrase' },
+    { label: 'Replied instead of calling a tool', v: 4.6, color: '--s2', why: 'Mostly replying instead of handing off' },
+    { label: 'Extra field', v: 1.1, color: '--s2', why: 'Added an argument the big model did not send' },
+    { label: 'Missing field', v: 1.0, color: '--s2', why: 'Left out an argument the big model sent' },
+  ];
+  hbars('chart-fails', {
+    max: 40, ticks: [0, 10, 20, 30, 40], tickFmt: t => t + '%', fmt: v => pct(v),
+    legend: [['Matched', '--s3'], ['Mistake', '--s2']],
+    rows: fails,
+    tip: r => `<b>${esc(r.label)}</b><br>${key(r.color)}<b>${pct(r.v)}</b> of tool calls<br><span class="m">${esc(r.why)}</span>`,
+    table: { cols: ['Outcome', 'Share of tool calls', 'Main cause'], rows: fails.map(r => [r.label, pct(r.v), r.why]) },
+  });
+
+  // 6. τ² task success (report 04, Qwen3-8B verdict).
+  const tau = [
+    { label: 'Gemini 2.5 Flash alone', v: 52.8, color: '--s1', why: '36 write tasks × 8 trials' },
+    { label: 'Mixed system (student got 0 turns)', v: 48.6, color: '--s1', why: 'Nothing was certified, so the student answered 0 of 4,293 turns: this is Gemini again, and the 4-point gap is chance' },
+    { label: 'Qwen3-8B alone', v: 33.3, color: '--s2', why: 'After 63 minutes of training on 2,000 examples' },
+  ];
+  hbars('chart-tau2', {
+    max: 60, ticks: [0, 20, 40, 60], tickFmt: t => t + '%', fmt: v => pct(v),
+    legend: [['Gemini 2.5 Flash (big model)', '--s1'], ['Qwen3-8B (student)', '--s2']],
+    rows: tau,
+    tip: r => `<b>${esc(r.label)}</b><br>${key(r.color)}Database correct: <b>${pct(r.v)}</b><br><span class="m">${esc(r.why)}</span>`,
+    table: { cols: ['Arm', 'Database correct', 'Note'], rows: tau.map(r => [r.label, pct(r.v), r.why]) },
+  });
+})();
+</script>
+
+</body>
+</html>
