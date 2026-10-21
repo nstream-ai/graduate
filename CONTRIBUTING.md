@@ -7,4 +7,8 @@ production. New trace formats (presets) and candidate failure modes the card mis
 welcome.
 
 Code changes: fork, branch, `pip install -e ".[dev]"`, keep `pytest` and `ruff check` green, and
-open a pull request describing the change and how you tested it.
+open a pull request describing the change and how you tested it. CI runs the same checks on every
+pull request.
+
+Please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Report security problems privately, as
+described in [SECURITY.md](SECURITY.md), not in a public issue.

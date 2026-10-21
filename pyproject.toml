@@ -4,7 +4,18 @@ version = "0.1.0"
 description = "Find out which of your agent's calls a cheaper model can take over, with a statistical certificate per slice of traffic."
 readme = "README.md"
 license = "Apache-2.0"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "The Graduate Authors" }]
+keywords = ["llm", "agents", "evaluation", "statistics", "certification", "model routing", "distillation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 requires-python = ">=3.12"
 dependencies = ["numpy>=2.0", "scipy>=1.13", "pydantic>=2.7"]
 
@@ -17,7 +28,9 @@ dev = ["pytest>=8", "hypothesis>=6", "ruff>=0.6"]
 
 [project.urls]
 Homepage = "https://nstream-ai.github.io/graduate/"
+Repository = "https://github.com/nstream-ai/graduate"
 Issues = "https://github.com/nstream-ai/graduate/issues"
+Changelog = "https://github.com/nstream-ai/graduate/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling"]
@@ -27,7 +40,7 @@ build-backend = "hatchling.build"
 packages = ["src/graduate"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/graduate", "tests", "README.md", "LICENSE", "REFERENCES.md"]
+include = ["src/graduate", "tests", "README.md", "LICENSE", "NOTICE", "REFERENCES.md", "CHANGELOG.md", "CITATION.cff"]
 
 [tool.ruff]
 line-length = 100

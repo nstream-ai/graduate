@@ -94,9 +94,9 @@ def rolling_rounds(
     sessions: Sequence[Session], rounds: int = 3, window: float = 0.15, salt: str = ""
 ) -> list[Round]:
     """Rotating held-out windows: round r trains on everything before window r and certifies on
-    window r, so each round's exam is traffic the student has never seen (Karpathy's private,
-    rotating eval). Windows are the last `rounds` slices of size `window` in time order
-    (stable hash order, flagged, when there are no timestamps)."""
+    window r, so each round's exam is traffic the student has never seen (a private, rotating
+    eval, as Karpathy argues; see REFERENCES.md). Windows are the last `rounds` slices of size
+    `window` in time order (stable hash order, flagged, when there are no timestamps)."""
     if rounds < 1 or not 0 < window * rounds < 1:
         raise ValueError("need rounds >= 1 and 0 < window * rounds < 1")
     order = split_sessions(sessions, {"all": 1.0}, salt)

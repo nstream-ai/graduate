@@ -10,7 +10,7 @@ and gives back a **report card**: the slices of traffic the candidate is certifi
 a statistical bound that holds for real agent traffic (calls linked within a conversation, many
 slices tested at once, small samples). Plug the certified slices into the router you already have.
 
-Website and live experiment grid: https://nstream-ai.github.io/graduate/
+Website: https://nstream-ai.github.io/graduate/ (experiments overview at `/grid/`)
 
 ## Quick start
 
@@ -117,9 +117,9 @@ pip install -e ".[dev]"
 pytest
 ```
 
-The core needs only NumPy, SciPy and Pydantic. Licence: Apache-2.0. References: `REFERENCES.md`.
+The core needs only NumPy, SciPy and Pydantic. Licence: Apache-2.0 (third-party notices in `NOTICE`). References: `REFERENCES.md`.
 
 ## This repo
 
-`index.html` and `grid/` are the website, published with GitHub Pages from the `main` branch;
+`index.html` and `grid/` (the experiments overview) are the website, published with GitHub Pages from the `main` branch;
 `src/graduate` is the package.

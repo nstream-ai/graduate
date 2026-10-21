@@ -47,3 +47,29 @@ The methods Graduate implements, and the work it builds on.
 - Stanton, S. et al. (2021). Does knowledge distillation really work? NeurIPS. arXiv:2106.05945.
 - Panickssery, A., Bowman, S. R. & Feng, S. (2024). LLM evaluators recognize and favor their own
   generations. NeurIPS. arXiv:2404.13076.
+
+## Trace formats and data sources (ingest presets)
+- NousResearch (2024). hermes-function-calling-v1 (dataset, Apache-2.0).
+  huggingface.co/datasets/NousResearch/hermes-function-calling-v1
+- Xu, Z. et al. (2025). TOUCAN: synthesizing 1.5M tool-agentic data from real-world MCP
+  environments. arXiv:2510.01179. Dataset: huggingface.co/datasets/Agent-Ark/Toucan-1.5M (Apache-2.0).
+- NVIDIA (2025). Nemotron-Agentic-v1 (dataset, CC-BY-4.0). huggingface.co/datasets/nvidia/Nemotron-Agentic-v1
+- Badertdinov, I. et al. (2025). SWE-rebench: an automated pipeline for task collection and
+  decontaminated evaluation of software engineering agents. arXiv:2505.20411.
+  Dataset: huggingface.co/datasets/nebius/SWE-rebench (CC-BY-4.0).
+- Sierra Research. τ²-bench simulation format. github.com/sierra-research/tau2-bench
+
+## Models and chat formats named in the docs and the training code
+- Qwen Team (2024). Qwen2.5 technical report. arXiv:2412.15115.
+- Yang, A. et al. (2025). Qwen3 technical report. arXiv:2505.09388.
+- Google DeepMind (2026). Gemma 4 (Apache-2.0). ai.google.dev/gemma. The chat-template test fixture
+  is Google's published template; see `NOTICE`.
+- Comanici, G. et al. (2025). Gemini 2.5: pushing the frontier with advanced reasoning,
+  multimodality, long context, and next generation agentic capabilities. arXiv:2507.06261.
+- Hu, E. J. et al. (2021). LoRA: low-rank adaptation of large language models. arXiv:2106.09685.
+- Kwon, W. et al. (2023). Efficient memory management for large language model serving with
+  PagedAttention (vLLM). SOSP. arXiv:2309.06180.
+
+## Practice
+- Karpathy, A. (2025). Public posts on the "evaluation crisis": private, rotating evaluation sets
+  (the motivation for `core.split.rolling_rounds`).

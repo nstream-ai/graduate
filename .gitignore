@@ -6,3 +6,9 @@ build/
 graduate-report/
 report/
 .ruff_cache/
+.env
+.env.*
+.pytest_cache/
+.hypothesis/
+.coverage
+.DS_Store
