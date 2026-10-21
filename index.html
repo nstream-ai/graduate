@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Graduate</title>
-<meta name="description" content="Prove when your small model is ready to take over. Distil agent traces into a LoRA student and certify, per slice of traffic, where it can replace the teacher.">
+<meta name="description" content="Prove when a cheaper model is ready to take over. Certify, per slice of your agent's traffic, where a candidate can replace the large model, with a statistical guarantee.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -219,7 +219,7 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
 <div class="wrap hero">
   <span class="eyebrow">Research preview · v0.1 open source</span>
   <h1>Prove when your small model is ready to take over.</h1>
-  <p class="lede">Bring your AI agent's logs. Get back a small, cheap model trained on them, plus honest, statistically checked proof of <em>which parts of the work it can safely take over</em> from the big model.</p>
+  <p class="lede">Bring your AI agent's logs and a cheaper candidate model. Get back honest, statistically checked proof of <em>which parts of the work it can safely take over</em> from the big model.</p>
   <div class="cta">
     <a class="btn primary" href="https://github.com/nstream-ai/graduate">Get the code on GitHub</a>
     <a class="btn" href="#status">See the results so far</a>
@@ -229,7 +229,7 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
 
 <section id="problem">
   <div class="wrap">
-    <h2>The hard part isn't training the small model</h2>
+    <h2>The hard part is the proof</h2>
     <p class="sub">An AI agent asks its model many small questions per conversation: which tool to use, what to fill in, what to reply. Many are routine, and a small model can answer them for a fraction of the cost. The hard part is proving <em>which</em> ones it can take over. Four things make that easy to get wrong:</p>
     <div class="grid g2">
       <div class="card"><h3>Calls in a conversation are linked</h3><p>One confusing conversation causes many mistakes at once. Counting each call as separate evidence gave a wrong approval in up to half of our test runs.</p></div>
@@ -243,15 +243,15 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
 <section id="how">
   <div class="wrap">
     <h2>How it works</h2>
-    <p class="sub">Two parts: distil a student from your traces, then grade it on held-out later traffic it has never seen.</p>
+    <p class="sub">Bring your traces and a candidate, ask the candidate every held-out call, and grade it per slice of traffic.</p>
     <div class="grid g3">
       <div class="card"><div class="step">01 · Ingest</div><h3>One schema for any trace</h3><p>Converters for OpenAI <code>tool_calls</code>, <code>function_call</code>, Hermes, Toucan, Glaive, Python-call and text-embedded commands. Every repair is audited.</p></div>
-      <div class="card"><div class="step">02 · Distil</div><h3>A LoRA student</h3><p>Time-ordered split by session, per-call SFT with LoRA. You get an adapter back; hosting stays yours.</p></div>
+      <div class="card"><div class="step">02 · Compare</div><h3>Any candidate you can serve</h3><p>Time-ordered split by session. The candidate, behind any OpenAI-compatible endpoint, answers the same held-out calls the big model did. Hosting stays yours.</p></div>
       <div class="card"><div class="step">03 · Graduate</div><h3>A report card per slice</h3><p>Slices are agent node × call type × tool × position. Each gets agreement or non-inferiority bounds and the share of calls and tokens it covers.</p></div>
     </div>
 <div class="pipe">
       <figure class="pipe-fig">
-        <svg viewBox="0 0 440 640" role="img" aria-label="Pipeline: agent logs are converted to one format and cut into conversations, calls and slices; conversations are split by time; older ones train the small model; newer, held-out ones are answered by both models; the answers are compared per slice with statistics; the result is a report card saying which slices graduate." style="color:var(--muted)">
+        <svg viewBox="0 0 440 640" role="img" aria-label="Pipeline: agent logs are converted to one format and cut into conversations, calls and slices; conversations are split by time; newer, held-out ones are answered by both the big model and the candidate; the answers are compared per slice with statistics; the result is a report card saying which slices graduate." style="color:var(--muted)">
           <defs>
             <marker id="pa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
             <marker id="pb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(--accent)"/></marker>
@@ -285,7 +285,7 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
             <text x="220" y="124">Conversations → calls → slices</text>
             <text x="115" y="224">Older conversations</text>
             <text x="325" y="224">Newer conversations</text>
-            <text x="115" y="324">Small model</text>
+            <text x="115" y="324">Your candidate</text>
             <text x="325" y="324">Both models answer</text>
             <text x="220" y="424">Statistics, per slice</text>
             <text x="220" y="526">Report card</text>
@@ -293,16 +293,16 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
           <g style="font-size:11.5px;fill:var(--muted)" text-anchor="middle">
             <text x="220" y="52">OpenAI, Hermes, Toucan, τ² … as JSONL</text>
             <text x="220" y="142">slice = agent × call type × tool × position</text>
-            <text x="115" y="242">used for training</text>
+            <text x="115" y="242">yours to tune on</text>
             <text x="325" y="242">held out, never trained on</text>
-            <text x="115" y="342">LoRA adapter on your data</text>
+            <text x="115" y="342">any served model</text>
             <text x="325" y="342">the same held-out calls</text>
             <text x="220" y="442">count conversations · exact betting test · BH</text>
           </g>
           <g style="font-size:11.5px;fill:var(--ink)">
             <text x="232" y="86">1 · ingest into one format</text>
             <text x="232" y="174">2 · split by time</text>
-            <text x="127" y="282">3 · fine-tune</text>
+            <text x="127" y="282">3 · bring</text>
             <text x="337" y="382" style="fill:var(--accent)">4 · compare</text>
             <text x="232" y="482">5 · verdict per slice</text>
           </g>
@@ -312,14 +312,14 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
             <circle cx="48" cy="604" r="5" style="fill:var(--bad)"/><text x="62" y="608"><tspan font-weight="600">No</tspan> → stays with the big model</text>
           </g>
         </svg>
-        <figcaption>The blue path is the one that makes the result trustworthy: the conversations used to judge the small model are newer than, and separate from, the ones it learned from.</figcaption>
+        <figcaption>The blue path is the one that makes the result trustworthy: the conversations used to judge the candidate are newer than, and separate from, anything it was tuned on.</figcaption>
       </figure>
       <ol class="pipe-steps">
         <li><b>Bring your logs.</b> The conversations your agent already had with its big model.<span class="tech-line">Converters for OpenAI <code>tool_calls</code>, <code>function_call</code>, Hermes, Toucan, Glaive, Python-call and text commands; every repair is recorded.</span></li>
         <li><b>Cut them into slices.</b> A slice is one kind of decision, like "look up a reservation at the start of a chat".<span class="tech-line">Slice = agent node × call type (tool or text) × tool × position bucket in the session.</span></li>
-        <li><b>Split by time.</b> Older conversations teach; newer ones test. The test set is never used for training, and never reused.<span class="tech-line">Time-ordered split by session into train / dev / calibration; dev chooses thresholds, calibration certifies.</span></li>
-        <li><b>Train the small model.</b> A cheap model learns to copy the big model's decisions.<span class="tech-line">Per-call supervised fine-tuning with LoRA; you get an adapter back.</span></li>
-        <li><b>Compare on new conversations.</b> Both models answer the same held-out calls; Graduate counts where they differ.<span class="tech-line">Gates: disagreement, invalid call, extra field, verbose reply. Per-session counts under a router cap.</span></li>
+        <li><b>Split by time.</b> Older conversations are yours to tune on; newer ones test. The test set is never tuned on, and never reused.<span class="tech-line">Time-ordered split by session into train / dev / calibration; dev chooses thresholds, calibration certifies.</span></li>
+        <li><b>Bring a candidate.</b> Any cheaper model: an open model you serve, a cheaper API, or one you built yourself.<span class="tech-line">Any OpenAI-compatible endpoint (<code>--base-url</code>, <code>--model</code>).</span></li>
+        <li><b>Compare on new conversations.</b> The candidate answers the same held-out calls the big model did; Graduate counts where they differ.<span class="tech-line">Gates: disagreement, invalid call, extra field, verbose reply. Per-session counts under a router cap.</span></li>
         <li><b>Get a verdict per slice.</b> Each slice graduates, needs more evidence, or stays with the big model, plus how much traffic and cost that covers.<span class="tech-line">Anytime-valid betting test per slice, Benjamini–Hochberg across slices, δ = 0.05.</span></li>
       </ol>
     </div>
@@ -406,7 +406,7 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
 <section id="status">
   <div class="wrap">
     <h2>Where it stands</h2>
-    <p class="sub">Honest results so far: the statistics work; the students aren't good enough yet, or we don't have enough test conversations to prove they are. Each verdict was pre-registered before the run.</p>
+    <p class="sub">Honest results so far: the statistics work. The candidates we have tested either aren't accurate enough yet, or there aren't enough test conversations to prove they are. Each verdict was pre-registered before the run.</p>
 
     <div class="card" style="margin-bottom:20px">
       <h3>How to read a verdict</h3>
@@ -419,56 +419,23 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
       <p style="margin-top:14px"><b>Example.</b> On a slice where the small model made 0 mistakes in 95 conversations, that sounds safe. But with 7 slices tested at once, 95 conversations is still too few to rule out a 5% error rate, so it isn't certified. Roughly three times more test conversations would likely certify it.</p>
     </div>
 
-    <div class="card chart-card" style="margin-bottom:16px">
-      <h3>The students are getting better</h3>
-      <p class="chart-sub">How often the student makes exactly the same tool call (tool and arguments) as the big model, on held-out conversations. Right column: share of traffic certified at the 5% limit.</p>
-      <div id="chart-agreement"></div>
-    </div>
-
-    <div class="grid g2" style="margin-bottom:16px">
-      <div class="card chart-card">
-        <h3>Where the first student went wrong</h3>
-        <p class="chart-sub">Qwen2.5-0.5B on 5,064 of the big model's tool calls (Nemotron). Share of calls by outcome.</p>
-        <div id="chart-fails"></div>
-      </div>
-      <div class="card chart-card">
-        <h3>Finishing whole tasks (τ²-bench retail)</h3>
-        <p class="chart-sub">Share of write tasks where the store's database ended up correct.</p>
-        <div id="chart-tau2"></div>
-      </div>
-    </div>
-
-    <div class="table-scroll card" style="padding:0">
-    <table>
-      <thead><tr><th>Experiment</th><th>Student</th><th>Matches the big model's tool call</th><th>Verdict</th><th>In plain words</th></tr></thead>
-      <tbody>
-        <tr><td>Nemotron customer-service agents</td><td>Qwen2.5-0.5B, 8k examples</td><td class="num">33%</td><td><span class="pill no">Nothing certified at 5%</span></td><td>Too inaccurate: wrong tool or wrong arguments on 2 of 3 tool calls.</td></tr>
-        <tr><td>Nemotron customer-service agents</td><td>Gemma 4 E2B, 1k</td><td class="num">40%</td><td><span class="pill wait">2.5% certified</span></td><td>Could take 2.5% of calls, all of them "reply in text instead of calling a tool". The reply's wording isn't checked.</td></tr>
-        <tr><td>Nemotron customer-service agents</td><td>Gemma 4 E4B, 1k</td><td class="num">43%</td><td><span class="pill wait">3.0% certified</span></td><td>Same as above: 3% of calls, text replies only.</td></tr>
-        <tr><td>τ²-bench retail vs Gemini 2.5 Flash</td><td>Qwen2.5-3B</td><td class="num">81%</td><td><span class="pill no">Nothing certified at 5%</span></td><td>Much better, but not enough test conversations to prove ≤ 5% errors anywhere. At a looser 10% limit, 9% of calls would qualify.</td></tr>
-        <tr><td>τ²-bench retail vs Gemini 2.5 Flash</td><td>Qwen3-8B, 2k</td><td class="num">79%</td><td><span class="pill no">Not graduated</span></td><td>Nothing certified, so the mixed system sent it 0 turns. Alone it finished 33% of tasks correctly; Gemini finished 53%.</td></tr>
-      </tbody>
-    </table>
-    </div>
     <div class="grid g2" style="margin-top:20px">
       <div class="card"><h3>Built</h3>
         <ul class="tight" style="color:var(--muted);font-size:15px">
           <li>Statistics library (<code>graduate.certify</code>), typed, tested</li>
           <li>Trace schema v0.3 and converters</li>
-          <li>Report card and a CPU end-to-end baseline</li>
-          <li>LoRA training and vLLM evaluation on GPU</li>
+          <li>Report card and the <code>graduate certify</code> command line</li>
         </ul>
       </div>
       <div class="card"><h3>Next</h3>
         <ul class="tight" style="color:var(--muted);font-size:15px">
-          <li>Stronger students on the slices that fail (escalation, free-text arguments)</li>
-          <li>Context distillation and on-policy correction</li>
-          <li>A trained defer head and a gated router</li>
+          <li>Outcome-based certification on replayable environments</li>
+          <li>Larger held-out sets, so more slices can be decided</li>
           <li>Shadow mode with a restarting drift detector</li>
         </ul>
       </div>
     </div>
-    <p class="note" style="margin-top:20px"><b>Why nothing graduated yet:</b> evidence, not the model, is the bottleneck. At a 3–5% claim a slice needs hundreds to ~1,000 independent sessions, and the students still disagree with the teacher on when to escalate and on free-text arguments.</p>
+    <p class="note" style="margin-top:20px"><b>Why nothing graduated yet:</b> evidence, not the model, is the bottleneck. At a 3–5% claim a slice needs hundreds to ~1,000 independent sessions. See the <a href="grid/">experiments overview</a> for what is running.</p>
   </div>
 </section>
 
@@ -498,7 +465,7 @@ s = sessions[0]
 
       <div class="code-step">
         <div class="zoom-tag">2 · Split by time</div>
-        <p>Older conversations train the small model; newer ones are kept aside to judge it.</p>
+        <p>Older conversations are yours to tune on; newer ones are kept aside to judge the candidate.</p>
 <pre><code><span class="kw">from</span> graduate.core <span class="kw">import</span> split_sessions
 
 split = split_sessions(sessions)   <span class="cm"># train 70% / dev 10% / calibration 20%, by time when timestamps exist</span>
@@ -561,7 +528,7 @@ plan_evidence(risk_estimate=<span class="nu">0.02</span>, coverage=<span class="
       </div>
     </div>
 
-    <p class="sub" style="margin-top:24px">Training and evaluation on GPU currently run from research scripts; a packaged command line is planned. The repo uses only openly licensed traces from open-weight models. If you bring traces from a commercial API, its terms on training other models apply to you.</p>
+    <p class="sub" style="margin-top:24px">The repo ships no model and no third-party data. If you bring traces from a commercial API, its terms on using its outputs apply to you.</p>
   </div>
 </section>
 </main>
@@ -759,61 +726,6 @@ plan_evidence(risk_estimate=<span class="nu">0.02</span>, coverage=<span class="
     table: { cols: ['Share of calls handled', 'Router cap (calls/session)', '1,000', '2,000', '4,000'], rows: caps.map(c => [c.name.replace('Handles ', ''), c.cap, ...c.p.map(p => Math.round(p * 100) + '%')]) },
   });
 
-  // 4. Student agreement and certified coverage (reports 03 and 04).
-  const students = [
-    { group: 'Nemotron customer-service agents' },
-    { label: 'Qwen2.5-0.5B · 1k examples', v: 23.2, cert: '–', note: 'No confidence scores, so not scored for coverage' },
-    { label: 'Qwen2.5-0.5B · 2k', v: 28.1, cert: '–', note: 'No confidence scores, so not scored for coverage' },
-    { label: 'Qwen2.5-0.5B · 4k', v: 29.2, cert: '0%' },
-    { label: 'Qwen2.5-0.5B · 8k', v: 33.4, cert: '0%' },
-    { label: 'Qwen2.5-1.5B · 1k', v: 31.0, cert: '0%' },
-    { label: 'Gemma 4 E2B · 1k', v: 39.9, cert: '2.5%', note: 'Certified slice is text replies only; wording not checked' },
-    { label: 'Gemma 4 E4B · 1k', v: 43.3, cert: '3.0%', note: 'Certified slice is text replies only; wording not checked' },
-    { group: 'τ²-bench retail (big model: Gemini 2.5 Flash)' },
-    { label: 'Qwen2.5-3B · 5.7k', v: 81, cert: '0%', note: 'Not enough test conversations; 9.1% would pass at a 10% limit', bench: 2 },
-    { label: 'Qwen3-8B · 2k', v: 79, cert: '0%', note: 'Not enough test conversations; 5.5% would pass at a 10% limit', bench: 2 },
-  ];
-  students.forEach(r => { if (!r.group) r.color = r.bench === 2 ? '--s2' : '--s1'; });
-  hbars('chart-agreement', {
-    max: 100, ticks: [0, 25, 50, 75, 100], tickFmt: t => t + '%', fmt: v => pct(v),
-    legend: [['Nemotron customer service', '--s1'], ['τ²-bench retail', '--s2']],
-    extraWidth: '72px', extraHead: 'Certified',
-    extra: r => r.cert === '0%' || r.cert === '–' ? esc(r.cert) : `<b>${esc(r.cert)}</b>`,
-    rows: students,
-    tip: r => `<b>${esc(r.label)}</b><br>${key(r.color)}Same tool and arguments: <b>${pct(r.v)}</b><br>Certified at 5%: <b>${esc(r.cert)}</b>` + (r.note ? `<br><span class="m">${esc(r.note)}</span>` : ''),
-    table: { cols: ['Student', 'Benchmark', 'Same tool + arguments', 'Certified at 5%'], rows: students.filter(r => !r.group).map(r => [r.label, r.bench === 2 ? 'τ²-bench retail' : 'Nemotron', pct(r.v), r.cert]) },
-  });
-
-  // 5. Where the first student went wrong (report 02).
-  const fails = [
-    { label: 'Same tool and arguments', v: 34, color: '--s3', why: 'Exact match with the big model' },
-    { label: 'Wrong tool', v: 34.9, color: '--s2', why: 'Mostly when to hand off to a human: it looked something up instead' },
-    { label: 'Right tool, wrong value', v: 25.5, color: '--s2', why: 'Mostly free-text arguments such as a handoff summary; exact matching can\'t credit a paraphrase' },
-    { label: 'Replied instead of calling a tool', v: 4.6, color: '--s2', why: 'Mostly replying instead of handing off' },
-    { label: 'Extra field', v: 1.1, color: '--s2', why: 'Added an argument the big model did not send' },
-    { label: 'Missing field', v: 1.0, color: '--s2', why: 'Left out an argument the big model sent' },
-  ];
-  hbars('chart-fails', {
-    max: 40, ticks: [0, 10, 20, 30, 40], tickFmt: t => t + '%', fmt: v => pct(v),
-    legend: [['Matched', '--s3'], ['Mistake', '--s2']],
-    rows: fails,
-    tip: r => `<b>${esc(r.label)}</b><br>${key(r.color)}<b>${pct(r.v)}</b> of tool calls<br><span class="m">${esc(r.why)}</span>`,
-    table: { cols: ['Outcome', 'Share of tool calls', 'Main cause'], rows: fails.map(r => [r.label, pct(r.v), r.why]) },
-  });
-
-  // 6. τ² task success (report 04, Qwen3-8B verdict).
-  const tau = [
-    { label: 'Gemini 2.5 Flash alone', v: 52.8, color: '--s1', why: '36 write tasks × 8 trials' },
-    { label: 'Mixed system (student got 0 turns)', v: 48.6, color: '--s1', why: 'Nothing was certified, so the student answered 0 of 4,293 turns: this is Gemini again, and the 4-point gap is chance' },
-    { label: 'Qwen3-8B alone', v: 33.3, color: '--s2', why: 'After 63 minutes of training on 2,000 examples' },
-  ];
-  hbars('chart-tau2', {
-    max: 60, ticks: [0, 20, 40, 60], tickFmt: t => t + '%', fmt: v => pct(v),
-    legend: [['Gemini 2.5 Flash (big model)', '--s1'], ['Qwen3-8B (student)', '--s2']],
-    rows: tau,
-    tip: r => `<b>${esc(r.label)}</b><br>${key(r.color)}Database correct: <b>${pct(r.v)}</b><br><span class="m">${esc(r.why)}</span>`,
-    table: { cols: ['Arm', 'Database correct', 'Note'], rows: tau.map(r => [r.label, pct(r.v), r.why]) },
-  });
 })();
 </script>
 

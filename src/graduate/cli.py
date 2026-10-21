@@ -12,7 +12,7 @@ dominate). Optionally the reference is re-asked on a sample of states: a slice w
 disagrees with itself at or above alpha cannot be certified by agreement by anyone.
 
     graduate certify traces.jsonl --preset openai \\
-        --base-url http://localhost:8000/v1 --model Qwen/Qwen3.5-4B --out report/
+        --base-url http://localhost:8000/v1 --model <candidate> --out report/
 
 Writes report/card.md, report/card.json and report/proposals.jsonl (resumable cache).
 """

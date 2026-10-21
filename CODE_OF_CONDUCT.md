@@ -8,8 +8,6 @@ requests or any other project space.
 
 ## Reporting
 
-Report conduct problems privately to the maintainers through
-https://github.com/nstream-ai/graduate/security/advisories/new (mark the report as a conduct
-issue), or by contacting a maintainer of the nstream-ai organization directly. Reports are kept
+Report conduct problems privately by email to **shivanshu.dubey12@gmail.com**. Reports are kept
 confidential. Maintainers may remove content or block participants who break this code, following
 the Contributor Covenant's enforcement guidelines.

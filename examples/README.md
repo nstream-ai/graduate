@@ -7,10 +7,9 @@ with no disagreement at alpha = 5% (the anytime-valid test pays a little for bei
 look).
 
 ```bash
-# a candidate behind any OpenAI-compatible endpoint, e.g. vLLM
-vllm serve Qwen/Qwen3.5-4B --enable-auto-tool-choice --tool-call-parser qwen3_coder &
+# a candidate behind any OpenAI-compatible endpoint (vLLM, Ollama, a hosted API)
 graduate certify examples/traces.jsonl --preset openai \
-    --base-url http://localhost:8000/v1 --model Qwen/Qwen3.5-4B --out report/
+    --base-url http://localhost:8000/v1 --model <candidate> --out report/
 cat report/card.md
 ```
 

@@ -18,16 +18,11 @@ Website: https://nstream-ai.github.io/graduate/ (experiments overview at `/grid/
 pip install "git+https://github.com/nstream-ai/graduate.git"
 ```
 
-Serve a candidate, for example an untrained Qwen3.5-4B on vLLM:
+Serve a candidate behind any OpenAI-compatible endpoint (vLLM, Ollama or a hosted API), then
+certify it against your traces:
 
 ```bash
-vllm serve Qwen/Qwen3.5-4B --enable-auto-tool-choice --tool-call-parser qwen3_coder
-```
-
-Certify it against your traces:
-
-```bash
-graduate certify traces.jsonl --preset openai --base-url http://localhost:8000/v1 --model Qwen/Qwen3.5-4B --out report/
+graduate certify traces.jsonl --preset openai --base-url http://localhost:8000/v1 --model <candidate> --out report/
 ```
 
 `traces.jsonl` holds one conversation per line in the OpenAI chat format

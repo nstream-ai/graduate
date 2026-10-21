@@ -59,13 +59,11 @@ The methods Graduate implements, and the work it builds on.
   Dataset: huggingface.co/datasets/nebius/SWE-rebench (CC-BY-4.0).
 - Sierra Research. τ²-bench simulation format. github.com/sierra-research/tau2-bench
 
-## Models and chat formats named in the docs and the training code
+## Model chat formats the training code reads
 - Qwen Team (2024). Qwen2.5 technical report. arXiv:2412.15115.
 - Yang, A. et al. (2025). Qwen3 technical report. arXiv:2505.09388.
 - Google DeepMind (2026). Gemma 4 (Apache-2.0). ai.google.dev/gemma. The chat-template test fixture
   is Google's published template; see `NOTICE`.
-- Comanici, G. et al. (2025). Gemini 2.5: pushing the frontier with advanced reasoning,
-  multimodality, long context, and next generation agentic capabilities. arXiv:2507.06261.
 - Hu, E. J. et al. (2021). LoRA: low-rank adaptation of large language models. arXiv:2106.09685.
 - Kwon, W. et al. (2023). Efficient memory management for large language model serving with
   PagedAttention (vLLM). SOSP. arXiv:2309.06180.
