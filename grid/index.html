@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Graduate Experiments</title>
+<meta name="description" content="Graduate: a high-level view of the experiments behind the certifier.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,600&display=swap">
+<style>
+/* Layout: one working column; a status line, the job ledger, then the scheduler's own log. */
+:root {
+  --bg: #f6f7f4; --surface: #ffffff; --fg: #1d231f; --muted: #5d685f; --rule: #dde2db;
+  --accent: #2f6f4e; --run: #2563a8; --ok: #2f7d4f; --bad: #b3412f; --wait: #8a7a3d;
+  --display: "Fraunces", Georgia, serif; --body: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121614; --surface: #1a201c; --fg: #e4e9e4; --muted: #9aa69c; --rule: #2c342f;
+  --accent: #7cc39b; --run: #79aee6; --ok: #7cc39b; --bad: #ec8a78; --wait: #d1bf7a; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #121614; --surface: #1a201c; --fg: #e4e9e4; --muted: #9aa69c; --rule: #2c342f;
+  --accent: #7cc39b; --run: #79aee6; --ok: #7cc39b; --bad: #ec8a78; --wait: #d1bf7a; color-scheme: dark; }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+main { max-width: 1180px; margin: 0 auto; padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 22px; }
+h1 { font-family: var(--display); font-weight: 600; font-size: 1.9rem; margin: 0; text-wrap: balance; }
+.lede { color: var(--muted); max-width: 70ch; margin: 6px 0 0; }
+.status { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; font-size: .95rem; }
+.status .stamp { font-family: var(--mono); color: var(--muted); font-size: .85rem; }
+.ledger { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 720px; font-variant-numeric: tabular-nums; }
+th { text-align: left; font-weight: 500; font-size: .72rem; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--rule); vertical-align: bottom; }
+td { padding: 9px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td.num, th.num { text-align: right; font-family: var(--mono); font-size: .88rem; white-space: nowrap; }
+td.name a { color: var(--fg); font-weight: 600; text-decoration-color: var(--rule); font-family: var(--mono); font-size: .9rem; }
+td.name a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sub { display: block; color: var(--muted); font-size: .8rem; }
+.toplink { margin: 4px 0 0; font-size: .9rem; } .toplink a { color: var(--accent); font-weight: 600; }
+td.verdict { font-size: .85rem; max-width: 520px; min-width: 260px; }
+.tau2 { display: grid; gap: 10px; }
+td.detail { color: var(--muted); font-size: .82rem; font-family: var(--mono); max-width: 360px; }
+.pill { font-size: .75rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.pill.running { color: var(--run); } .pill.done { color: var(--ok); } .pill.failed { color: var(--bad); }
+.pill.queued, .pill.starting, .pill.stopped { color: var(--wait); }
+.meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.meta > div { min-width: 0; }
+h2 { font-size: .78rem; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; font-weight: 600; }
+pre { margin: 0; font-family: var(--mono); font-size: .8rem; background: var(--surface); border: 1px solid var(--rule);
+  border-radius: 6px; padding: 12px; overflow-x: auto; white-space: pre; color: var(--fg); }
+.note { color: var(--muted); font-size: .85rem; max-width: 80ch; }
+.guide dl { display: grid; grid-template-columns: minmax(130px, max-content) 1fr; gap: 6px 18px; margin: 0; max-width: 95ch; }
+.guide dt { font-weight: 600; font-size: .9rem; }
+.guide dd { margin: 0; color: var(--muted); font-size: .9rem; min-width: 0; }
+@media (max-width: 560px) { .guide dl { grid-template-columns: 1fr; } .guide dd { margin-bottom: 6px; } }
+</style>
+</head><body>
+<main>
+  <header>
+    <h1>Graduate Experiments</h1>
+    <p class="toplink"><a href="../">← Graduate home</a></p>
+    <p class="lede">We test the certifier on public agent benchmarks (τ²-bench retail, airline and telecom, and
+    public customer-service agent traces): a cheaper candidate shadows a large model's traffic, and the certifier
+    says where, if anywhere, it can take over. This page gives a high-level view of that work; results we are
+    confident in go on the home page.</p>
+  </header>
+  <div class="status"><span>101 runs: <b>82</b> done · <b>2</b> running · <b>2</b> queued · <b>15</b> failed</span><span class="stamp">updated 2026-10-21 18:26 UTC</span></div>
+  <div class="ledger"><table>
+    <thead><tr><th>Area</th><th>What it checks</th><th class="num">Runs</th><th class="num">Done</th>
+      <th class="num">Running</th><th class="num">Queued</th><th class="num">Failed</th></tr></thead>
+    <tbody><tr><td class='name'><b>Baselines</b></td><td class='verdict'>Measure the large model and simple reference systems on each benchmark, so every later number has something to be compared with.</td><td class='num'>8</td><td class='num'>7</td><td class='num'>–</td><td class='num'>–</td><td class='num'>1</td></tr><tr><td class='name'><b>Candidate evaluations</b></td><td class='verdict'>Score candidate models against the large model's own decisions on conversations they have never seen.</td><td class='num'>71</td><td class='num'>56</td><td class='num'>2</td><td class='num'>1</td><td class='num'>12</td></tr><tr><td class='name'><b>Certification</b></td><td class='verdict'>Run the certifier: find the slices of traffic a candidate can take over, each with a statistical guarantee, and check that the guarantees hold on fresh data.</td><td class='num'>15</td><td class='num'>14</td><td class='num'>–</td><td class='num'>–</td><td class='num'>1</td></tr><tr><td class='name'><b>End-to-end exams</b></td><td class='verdict'>Run whole tasks with the mixed system (candidate plus fallback to the large model) against a simulated user, and compare task success with the large model alone.</td><td class='num'>7</td><td class='num'>5</td><td class='num'>–</td><td class='num'>1</td><td class='num'>1</td></tr></tbody></table></div>
+  <p class="note">Every verdict is pre-registered before its run: the claim, the metric and the pass bar are fixed
+  first, and a run that fails or is stopped is counted, not dropped.</p>
+</main>
+</body></html>
