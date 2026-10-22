@@ -65,8 +65,9 @@ You get, in `report/`:
   "more conversations" target does not move closer unless the disagreement rate improved.
 
 `card.md` ends with a legend for the table. A slice that is not certified for lack of evidence
-gives a range of how many more conversations it would need; a slice whose disagreement is already
-above alpha says that more conversations will not help. "Why slices disagree" gives one cause per
+gives a range of how many more conversations it would need; a slice whose disagreement is
+significantly above alpha (its lower bound reaches alpha) says that more conversations will not
+help. "Why slices disagree" gives one cause per
 disagreeing call and an example with its values redacted.
 
 ## Terms

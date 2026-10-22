@@ -34,7 +34,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
-from graduate.certify.card import plan_text, report_card
+from graduate.certify.card import above_gate, plan_text, report_card
 from graduate.certify.causes import (
     CAUSES,
     NORMALISER,
@@ -214,18 +214,26 @@ def slice_verdicts(
     card: Any, alpha: float, why: dict[str, Any] | None = None, calibration: dict | None = None
 ) -> list[dict]:
     """Per slice: the verdict and the smallest disagreement margin this evidence can resolve
-    (zero-event bound, about 3 / n sessions). The observed rate decides first: at or above alpha
-    the slice is not certified and more evidence will not change that; below alpha and not yet
-    certified, it "cannot be decided with this evidence" (not a failure), with the planner's
-    range."""
+    (zero-event bound, about 3 / n sessions). A slice whose disagreement is significantly at or
+    above alpha (one-sided lower bound >= alpha) is not certified and more evidence will not change
+    that; otherwise a slice not yet certified "cannot be decided with this evidence" (not a
+    failure), with the planner's range when its observed rate is below alpha."""
     out = []
     for r in card.slices:
         detectable = 3 / r.sessions if r.sessions else 1.0
         a = card.alphas[r.binding]
         if r.certified:
             verdict = "certified"
+        elif above_gate(r.rate, r.certified_population, a, card.delta):
+            verdict = (
+                f"not certified: disagreement {r.rate:.0%} is significantly above alpha {a:g}; "
+                "more conversations will not help"
+            )
         elif r.rate >= a:
-            verdict = f"not certified: disagreement {r.rate:.0%} is above alpha {a:g}"
+            verdict = (
+                f"cannot be decided with this evidence: disagreement {r.rate:.0%} is not "
+                f"significantly above alpha {a:g}"
+            )
         elif r.plan:
             verdict = f"cannot be decided with this evidence: {plan_text(r.plan)}"
         else:

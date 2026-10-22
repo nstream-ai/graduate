@@ -27,6 +27,7 @@ from graduate.certify.stats import (
     benjamini_hochberg,
     betting_risk_test,
     bonferroni,
+    clopper_pearson_interval,
     holm,
     ratio_upper_bound,
     session_counts,
@@ -101,6 +102,16 @@ def plan_text(plan: dict) -> str:
     span = f"at least {n(lo)}" + (f", up to {n(hi)}" if hi != lo else "")
     text = f"not enough evidence: {span} more conversations ({plan['criterion']})"
     return text + ("; " + NEAR_MARGIN if plan.get("near_margin") else "")
+
+
+def above_gate(rate: float, population: int, alpha: float, delta: float) -> bool:
+    """The disagreement rate is significantly at or above alpha: the one-sided 1 - delta lower
+    Clopper-Pearson bound reaches alpha. Only then can more conversations not help; an observed
+    rate above alpha on a thin slice (1 of 5) is still undecided."""
+    if population <= 0:
+        return False
+    errors = round(rate * population)
+    return clopper_pearson_interval(errors, population, 1 - 2 * delta)[0] >= alpha
 
 
 def near_margin(rate: float, alpha: float, population: int) -> bool:
@@ -179,10 +190,17 @@ class ReportCard:
             if r.plan:
                 verdict += f"  [{plan_text(r.plan)}]"
             elif not r.certified and r.rate >= self.alphas[r.binding]:
-                verdict += (
-                    f"  [disagreement {r.rate:.0%} is above alpha {self.alphas[r.binding]:g}: "
-                    "more conversations will not help]"
-                )
+                a = self.alphas[r.binding]
+                if above_gate(r.rate, r.certified_population, a, self.delta):
+                    verdict += (
+                        f"  [disagreement {r.rate:.0%} is significantly above alpha {a:g}: "
+                        "more conversations will not help]"
+                    )
+                else:
+                    verdict += (
+                        f"  [cannot be decided with this evidence: disagreement {r.rate:.0%} is "
+                        f"not significantly above alpha {a:g}]"
+                    )
             detect = 3 / r.sessions if r.sessions else 1.0  # smallest rate n can rule out
             rows.append(
                 f"{r.slice[:51]:<52}{r.cap:>4}{r.sessions:>6}{r.calls:>7}{r.rate:>7.3f}"

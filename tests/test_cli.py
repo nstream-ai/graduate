@@ -239,7 +239,7 @@ def test_card_says_why_a_slice_disagrees_and_normalise_args_is_opt_in(tmp_path: 
     assert "Why slices disagree" in md and '"#W0000"' in md and '"W0000"' in md  # redacted
     assert "#W1000" not in md
     # the verdict follows the observed rate: 100% disagreement is not "collect more data"
-    assert tool["verdict"].startswith("not certified: disagreement 100% is above alpha")
+    assert tool["verdict"].startswith("not certified: disagreement 100% is significantly above")
     assert "needs ~" not in md and "more conversations will not help" in md
     assert "reported below, not forgiven" in md  # the normaliser was not applied
     assert "| slice | sessions |" not in md  # one per-slice table in card.md
