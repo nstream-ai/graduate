@@ -1,6 +1,6 @@
 """Lenient parsing with an audit trail. Every repair is named and recorded on the tool call, so
 training and evaluation can include or exclude repaired calls explicitly. Repairs seen in open
-datasets (research/report/trace-variation.md):
+datasets:
 
   double_encoded       arguments are a JSON string containing JSON
   literal_newline      a literal backslash-n around the JSON

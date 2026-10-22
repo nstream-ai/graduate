@@ -77,13 +77,15 @@ def tau2(sim: dict[str, Any], source: str) -> Session:
     """One tau2-bench simulation.
 
     Raw result files hold the policy but not the agent's system prompt or the tool definitions;
-    `research/tau2/export_sessions.py` adds both (`system`, `tools`). Without them the session is
-    flagged static_context_missing. The deterministic database check is kept apart from the full
+    add both to each simulation (`system`, `tools`) when you export them. Without them the session
+    is flagged static_context_missing. The deterministic database check is kept apart from the full
     reward (which also includes LLM-judged assertions). An infrastructure error is not an outcome
     of the agent, so it never counts as a failure."""
     # The agent's view only. In dual-control domains (telecom) the user calls tools on their own
     # device; those calls and their results are not shown to the agent, so they must not enter
     # its history (they would be orphan tool results and a context the agent never sees).
+    if "task_id" not in sim and "termination_reason" not in sim:
+        raise ValueError("not a tau2 simulation (no task_id or termination_reason field)")
     msgs = [
         m for m in sim["messages"]
         if not (m.get("role") == "tool" and m.get("requestor") == "user")

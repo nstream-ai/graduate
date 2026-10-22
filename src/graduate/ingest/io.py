@@ -26,12 +26,17 @@ def read_records(path: str | Path, limit: int | None = None) -> Iterator[dict[st
         return
     if path.suffix == ".jsonl":
         with path.open() as f:
-            for line in f:
+            for lineno, line in enumerate(f, 1):
                 if limit is not None and n >= limit:
                     return
                 if line.strip():
                     n += 1
-                    yield json.loads(line)
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError as e:  # name the file's line, not the record's
+                        msg = f"line {lineno}: {e.msg}"
+                        raise json.JSONDecodeError(msg, e.doc, e.pos) from None
+                    yield record
         return
     data = json.loads(path.read_text())
     records = data.get("simulations", [data]) if isinstance(data, dict) else data

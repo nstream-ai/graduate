@@ -14,7 +14,9 @@ disagrees with itself at or above alpha cannot be certified by agreement by anyo
     graduate certify traces.jsonl --preset openai \\
         --base-url http://localhost:8000/v1 --model <candidate> --out report/
 
-Writes report/card.md, report/card.json and report/proposals.jsonl (resumable cache).
+Writes report/card.md, report/card.json and report/proposals.jsonl: a resumable cache of the
+candidate's answers, tied to the traces, --model and --base-url it was made with (a different
+candidate needs another --out, or --fresh). Failed requests are not cached: rerun to retry them.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ import sys
 import urllib.request
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -182,17 +185,73 @@ def certify(
     return card, decision
 
 
+CARD_LEGEND = """How to read the table: a slice is one kind of decision the candidate proposes
+(agent node / call type / tool / position bucket in the conversation). sess = conversations
+counted; calls = calls in the slice; rate = observed disagreement with the reference;
+upper = its 1 - delta upper bound; p = p-value after the multiplicity correction; share =
+fraction of all calls. GRADUATED = certified at alpha: a router may send this slice to the
+candidate. "-" = not certified; "not enough evidence" says how many more conversations a
+slice would likely need at its observed rate.
+"""
+
+
+def _version() -> str:
+    try:
+        return version("graduate")
+    except PackageNotFoundError:
+        return "unknown"
+
+
+def _fraction(s: str) -> float:
+    x = float(s)
+    if not 0 < x < 1:
+        raise argparse.ArgumentTypeError(f"must be a fraction in (0, 1), e.g. 0.05 (got {s})")
+    return x
+
+
+def _fail(msg: str) -> None:
+    print(f"graduate: {msg}", file=sys.stderr)
+    raise SystemExit(2)
+
+
+def _key(env: str | None, flag: str) -> str | None:
+    if env is None:
+        return None
+    if env not in os.environ:
+        print(f"graduate: warning: {flag} {env} is not set; no API key is sent", file=sys.stderr)
+    return os.environ.get(env)
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(prog="graduate")
+    ap.add_argument("--version", action="version", version=f"%(prog)s {_version()}")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    c = sub.add_parser("certify", help="which calls can a candidate take over?")
+    c = sub.add_parser(
+        "certify",
+        help="which calls can a candidate take over?",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
     c.add_argument("traces", help="JSON / JSONL / Parquet file of logged conversations")
-    c.add_argument("--preset", default="openai", choices=sorted(PRESETS))
-    c.add_argument("--base-url", required=True, help="OpenAI-compatible endpoint of the candidate")
+    c.add_argument(
+        "--preset", default="openai", choices=sorted(PRESETS), help="format of the traces file"
+    )
+    c.add_argument(
+        "--base-url",
+        required=True,
+        help="OpenAI-compatible endpoint of the candidate, ending in /v1 "
+        "(e.g. http://localhost:11434/v1 for Ollama)",
+    )
     c.add_argument("--model", required=True, help="candidate model name at that endpoint")
-    c.add_argument("--api-key-env", default="OPENAI_API_KEY", help="env var holding the key")
-    c.add_argument("--alpha", type=float, default=0.05, help="allowed disagreement rate")
-    c.add_argument("--delta", type=float, default=0.05, help="1 - confidence")
+    c.add_argument(
+        "--api-key-env",
+        default=None,
+        help="env var holding the candidate endpoint's API key; unset: no key is sent "
+        "(a local server needs none)",
+    )
+    c.add_argument(
+        "--alpha", type=_fraction, default=0.05, help="allowed disagreement rate, e.g. 0.05"
+    )
+    c.add_argument("--delta", type=_fraction, default=0.05, help="1 - confidence, e.g. 0.05")
     c.add_argument(
         "--cap",
         type=int,
@@ -201,27 +260,60 @@ def main(argv: list[str] | None = None) -> None:
         "scales with 1/cap: keep it near the calls a conversation really has)",
     )
     c.add_argument("--limit", type=int, default=None, help="first N conversations only")
-    c.add_argument("--concurrency", type=int, default=8)
+    c.add_argument("--concurrency", type=int, default=8, help="parallel requests")
     c.add_argument(
         "--reference-base-url",
         default=None,
         help="re-ask the reference here to measure its own noise (optional)",
     )
-    c.add_argument("--reference-model", default=None)
+    c.add_argument("--reference-model", default=None, help="the reference model's name there")
+    c.add_argument(
+        "--reference-api-key-env",
+        default=None,
+        help="env var holding the reference endpoint's API key; unset: no key is sent",
+    )
     c.add_argument("--reference-samples", type=int, default=200, help="states re-asked")
-    c.add_argument("--out", default="graduate-report")
+    c.add_argument("--out", default="graduate-report", help="output folder")
+    c.add_argument(
+        "--fresh", action="store_true", help="ignore cached answers in --out and ask again"
+    )
     args = ap.parse_args(argv)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    key = os.environ.get(args.api_key_env)
+    key = _key(args.api_key_env, "--api-key-env")
+    ref_key = _key(args.reference_api_key_env, "--reference-api-key-env")
 
-    rows, skipped = states(ingest(args.traces, args.preset, limit=args.limit))
-    print(f"{len(rows):,} reference calls ({dict(skipped)} left out)", file=sys.stderr)
+    try:
+        rows, skipped = states(ingest(args.traces, args.preset, limit=args.limit))
+    except FileNotFoundError:
+        _fail(f"no such file: {args.traces}")
+    except json.JSONDecodeError as e:
+        _fail(f"{args.traces} is not valid JSON ({e.msg})")
+    except (KeyError, TypeError, ValueError) as e:
+        _fail(
+            f"{args.traces} does not look like --preset {args.preset} ({type(e).__name__}: {e}); "
+            "check --preset (see README: trace formats)"
+        )
+    left = ", ".join(f"{n} {k}" for k, n in sorted(skipped.items())) or "none"
+    print(f"{len(rows):,} reference calls (left out: {left})", file=sys.stderr)
+    if not rows:
+        _fail(f"no reference calls found in {args.traces} with --preset {args.preset}")
     cache = out / "proposals.jsonl"
+    stamp = {"_cache": 1, "model": args.model, "base_url": args.base_url, "traces": args.traces}
     proposals: dict[str, dict] = {}
-    if cache.exists():
-        proposals = {p["key"]: p for p in map(json.loads, cache.read_text().splitlines())}
+    if cache.exists() and not args.fresh:
+        lines = [json.loads(x) for x in cache.read_text().splitlines() if x.strip()]
+        head = lines[0] if lines and "_cache" in lines[0] else None
+        if head is None or {k: head.get(k) for k in stamp} != stamp:
+            was = f"{head.get('model')} at {head.get('base_url')}" if head else "an older run"
+            _fail(
+                f"{cache} holds answers from {was}, not {args.model} at {args.base_url}; "
+                "use another --out, or --fresh to ask again"
+            )
+        proposals = {p["key"]: p for p in lines[1:] if "error" not in p}
     todo = [r for r in rows if r["key"] not in proposals]
+    if args.fresh or not cache.exists():
+        cache.write_text(json.dumps(stamp) + "\n")
 
     def one(r: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -235,10 +327,23 @@ def main(argv: list[str] | None = None) -> None:
     with ThreadPoolExecutor(args.concurrency) as pool, cache.open("a") as f:
         for i, p in enumerate(pool.map(one, todo)):
             proposals[p["key"]] = p
-            f.write(json.dumps(p) + "\n")
+            if "error" not in p:  # failures are not cached, so a rerun retries them
+                f.write(json.dumps(p) + "\n")
             if (i + 1) % 100 == 0:
                 print(f"{i + 1:,}/{len(todo):,} proposals", file=sys.stderr)
-    errors = sum("error" in proposals[r["key"]] for r in rows)
+    failed = [proposals[r["key"]] for r in rows if "error" in proposals[r["key"]]]
+    errors = len(failed)
+    if errors:
+        print(
+            f"{errors:,}/{len(rows):,} requests to {args.base_url} failed; first error: "
+            f"{failed[0]['error']}",
+            file=sys.stderr,
+        )
+        if errors == len(rows):
+            _fail(
+                f"every request to {args.base_url} failed: check that the server is running, "
+                "that --base-url ends in /v1 and that --model is a name it serves"
+            )
     rows = [r for r in rows if "error" not in proposals[r["key"]]]
 
     noisy: set[str] = set()
@@ -253,7 +358,7 @@ def main(argv: list[str] | None = None) -> None:
                     lambda r: ask(
                         args.reference_base_url,
                         args.reference_model,
-                        key,
+                        ref_key,
                         r["messages"],
                         r["tools"],
                     ),
@@ -287,12 +392,18 @@ def main(argv: list[str] | None = None) -> None:
     (out / "card.json").write_text(json.dumps(report, indent=2, default=str))
     md = (
         f"# Graduate report card: {args.model}\n\n"
-        f"{len(rows):,} reference calls; certified share **{card.certified_call_share:.1%}** "
+        + (
+            f"**{errors:,} requests failed** and are left out; rerun to retry.\n\n"
+            if errors
+            else ""
+        )
+        + f"{len(rows):,} reference calls; certified share **{card.certified_call_share:.1%}** "
         f"at alpha {args.alpha:g}, confidence {1 - args.delta:.0%}.\n\n"
         f"Replied instead of acting: {decision['replied_instead_of_acting']:.1%}; acted "
         f"instead of replying: {decision['acted_instead_of_replying']:.1%}; overall "
-        f"agreement {decision['agreement']:.1%}. Text replies agree by decision only (reply "
-        f"vs act); their wording is not compared.\n\n```\n{card.render(top=40)}\n```\n"
+        f"agreement {decision['agreement']:.1%}. A call is every model turn: a tool call or "
+        f"a text reply. Text replies agree by decision only (reply vs act); their wording is not "
+        f"compared.\n\n```\n{card.render(top=40)}\n```\n\n{CARD_LEGEND}"
     )
     if noise:
         md += (
@@ -302,6 +413,7 @@ def main(argv: list[str] | None = None) -> None:
         )
     (out / "card.md").write_text(md)
     print(md)
+    print(f"wrote {out / 'card.md'} and {out / 'card.json'}", file=sys.stderr)
 
 
 if __name__ == "__main__":

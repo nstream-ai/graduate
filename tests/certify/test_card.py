@@ -107,3 +107,13 @@ def test_shielded_calls_leave_the_population_but_count_in_coverage_denominator()
     shielded = report_card(k, s, w, cap=1, accepted=accepted).slices[0]
     assert not plain.certified and shielded.certified
     assert shielded.call_share == 630 / 700
+
+
+def test_render_says_how_much_more_evidence_and_survives_rate_one() -> None:
+    from graduate.certify.card import report_card
+
+    keys = ["a"] * 10 + ["b"] * 10
+    sess = [f"s{i}" for i in range(20)]
+    wrong = [False] * 10 + [True] * 10  # "a": clean but too small; "b": always wrong
+    text = report_card(keys, sess, wrong=wrong, alpha=0.05, delta=0.05).render()
+    assert "more conversations" in text
