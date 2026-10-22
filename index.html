@@ -245,9 +245,9 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
     <h2>How it works</h2>
     <p class="sub">Bring your traces and a candidate, ask the candidate every held-out call, and grade it per slice of traffic.</p>
     <div class="grid g3">
-      <div class="card"><div class="step">01 · Ingest</div><h3>One schema for any trace</h3><p>Converters for OpenAI <code>tool_calls</code>, <code>function_call</code>, Hermes, Toucan, Glaive, Python-call and text-embedded commands. Every repair is audited.</p></div>
+      <div class="card"><div class="step">01 · Ingest</div><h3>One schema for any trace</h3><p>Converters for OpenAI <code>tool_calls</code>, <code>function_call</code>, Hermes, Toucan, Nemotron, SWE-rebench and τ²-bench, plus tool calls written into the text. Every repair is audited.</p></div>
       <div class="card"><div class="step">02 · Compare</div><h3>Any candidate you can serve</h3><p>Time-ordered split by session. The candidate, behind any OpenAI-compatible endpoint, answers the same held-out calls the big model did. Hosting stays yours.</p></div>
-      <div class="card"><div class="step">03 · Graduate</div><h3>A report card per slice</h3><p>Slices are agent node × call type × tool × position. Each gets agreement or non-inferiority bounds and the share of calls and tokens it covers.</p></div>
+      <div class="card"><div class="step">03 · Graduate</div><h3>A report card per slice</h3><p>Slices are agent node × call type × tool × position. Each gets an exact bound on its disagreement with the big model and the share of calls and tokens it covers.</p></div>
     </div>
 <div class="pipe">
       <figure class="pipe-fig">
@@ -294,7 +294,7 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
             <text x="220" y="52">OpenAI, Hermes, Toucan, τ² … as JSONL</text>
             <text x="220" y="142">slice = agent × call type × tool × position</text>
             <text x="115" y="242">yours to tune on</text>
-            <text x="325" y="242">held out, never trained on</text>
+            <text x="325" y="242">held out, never tuned on</text>
             <text x="115" y="342">any served model</text>
             <text x="325" y="342">the same held-out calls</text>
             <text x="220" y="442">count conversations · exact betting test · BH</text>
@@ -315,11 +315,11 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
         <figcaption>The blue path is the one that makes the result trustworthy: the conversations used to judge the candidate are newer than, and separate from, anything it was tuned on.</figcaption>
       </figure>
       <ol class="pipe-steps">
-        <li><b>Bring your logs.</b> The conversations your agent already had with its big model.<span class="tech-line">Converters for OpenAI <code>tool_calls</code>, <code>function_call</code>, Hermes, Toucan, Glaive, Python-call and text commands; every repair is recorded.</span></li>
+        <li><b>Bring your logs.</b> The conversations your agent already had with its big model.<span class="tech-line">Converters for OpenAI <code>tool_calls</code>, <code>function_call</code>, Hermes, Toucan, Nemotron, SWE-rebench, τ²-bench and tool calls written into the text; every repair is recorded.</span></li>
         <li><b>Cut them into slices.</b> A slice is one kind of decision, like "look up a reservation at the start of a chat".<span class="tech-line">Slice = agent node × call type (tool or text) × tool × position bucket in the session.</span></li>
-        <li><b>Split by time.</b> Older conversations are yours to tune on; newer ones test. The test set is never tuned on, and never reused.<span class="tech-line">Time-ordered split by session into train / dev / calibration; dev chooses thresholds, calibration certifies.</span></li>
+        <li><b>Split by time.</b> Older conversations are yours to tune on; newer ones test. The test set is never tuned on, and never reused.<span class="tech-line"><code>graduate certify</code> certifies the whole file you give it, so pass only newer conversations. In Python, <code>split_sessions</code> makes the time-ordered split by session.</span></li>
         <li><b>Bring a candidate.</b> Any cheaper model: an open model you serve, a cheaper API, or one you built yourself.<span class="tech-line">Any OpenAI-compatible endpoint (<code>--base-url</code>, <code>--model</code>).</span></li>
-        <li><b>Compare on new conversations.</b> The candidate answers the same held-out calls the big model did; Graduate counts where they differ.<span class="tech-line">Gates: disagreement, invalid call, extra field, verbose reply. Per-session counts under a router cap.</span></li>
+        <li><b>Compare on new conversations.</b> The candidate answers the same held-out calls the big model did; Graduate counts where they differ.<span class="tech-line">Gates: disagreement and invalid call (the Python report card takes any gates you define). Per-session counts under a router cap.</span></li>
         <li><b>Get a verdict per slice.</b> Each slice graduates, needs more evidence, or stays with the big model, plus how much traffic and cost that covers.<span class="tech-line">Anytime-valid betting test per slice, Benjamini–Hochberg across slices, δ = 0.05.</span></li>
       </ol>
     </div>
@@ -380,9 +380,9 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
         <div class="tech">
           <p><b>What is measured.</b> For a slice with true per-call error <i>p</i> and claim <i>p</i> ≤ α (α = 5%), a false certification is a certificate issued when <i>p</i> ≥ α. Each bar is the worst observed P(certify | <i>p</i> = α) over all simulation settings: the boundary null, where a valid test is hardest to keep valid. With many slices it is the family-wise error rate.</p>
           <p><b>The band.</b> Each rate comes from 1,000 replications, so a true 5% shows up anywhere up to about 5% + 2·√(0.05·0.95/1000) ≈ 6.4%. The shaded band is that Monte Carlo tolerance.</p>
-          <p><b>Settings covered.</b> Session random effects σ ∈ [0, 3] on the logit scale, 3–30 calls per session, 5–80 slices, cross-slice correlation up to 0.9, and the FreeInference week used as a finite population with exact truth.</p>
+          <p><b>Settings covered.</b> Session random effects σ ∈ [0, 3] on the logit scale, 3–30 calls per session, 5–80 slices, cross-slice correlation up to 0.9, and a public week of real agent traffic (197k tool calls) used as a finite population with exact truth.</p>
           <p><b>The betting test.</b> With per-session statistic X<sub>i</sub> = errors<sub>i</sub> − α·accepted<sub>i</sub>, the capital K<sub>t</sub> = ∏(1 − λ<sub>i</sub>X<sub>i</sub>), with predictable bets λ<sub>i</sub> ∈ [0, c/U], is a non-negative supermartingale under H₀: E[X] ≥ 0. Ville's inequality gives P(sup<sub>t</sub> K<sub>t</sub> ≥ 1/δ) ≤ δ, so p = 1/max K is valid at every look. Graduate averages bettors over c ∈ {0.5, 0.75, 0.9, 0.99}.</p>
-          <p><b>Across slices.</b> Benjamini–Hochberg at δ = 0.05 by default. The full validity report and the design records behind it will be published with the code.</p>
+          <p><b>Across slices.</b> Benjamini–Hochberg at δ = 0.05 by default. The full validity report will be published in a later release.</p>
         </div>
       </details>
     </div>
@@ -423,7 +423,7 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
       <div class="card"><h3>Built</h3>
         <ul class="tight" style="color:var(--muted);font-size:15px">
           <li>Statistics library (<code>graduate.certify</code>), typed, tested</li>
-          <li>Trace schema v0.3 and converters</li>
+          <li>One trace schema and converters for seven formats</li>
           <li>Report card and the <code>graduate certify</code> command line</li>
         </ul>
       </div>
@@ -443,13 +443,13 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
   <div class="wrap">
     <h2>Use it from Python</h2>
     <p class="sub">Each example builds on the one before, from loading logs to the statistics underneath.</p>
-    <p class="note"><b>Install:</b> <code>pip install "git+https://github.com/nstream-ai/graduate.git"</code>, then <code>graduate certify traces.jsonl --base-url &lt;candidate endpoint&gt; --model &lt;candidate&gt;</code>. Code, docs and the report template are on <a href="https://github.com/nstream-ai/graduate">GitHub</a>.</p>
+    <p class="note"><b>Install:</b> <code>pip install "git+https://github.com/nstream-ai/graduate.git"</code>, then <code>graduate certify traces.jsonl --base-url &lt;candidate endpoint&gt; --model &lt;candidate&gt;</code>. No model yet? <code>examples/mock_candidate.py</code> is a stand-in, and a small model on your CPU via Ollama or llama.cpp works too (see <code>examples/README.md</code>). Code, docs and the report template are on <a href="https://github.com/nstream-ai/graduate">GitHub</a>.</p>
 
 
     <div class="code-steps">
       <div class="code-step">
         <div class="zoom-tag">1 · Load your agent's logs</div>
-        <p>Turn a JSONL file of chat logs into conversations. Each line is one conversation in OpenAI chat format (<code>messages</code>, optional <code>tools</code>). Other presets: <code>hermes</code>, <code>toucan</code>, <code>nemotron</code>, <code>tau2</code>.</p>
+        <p>Turn a JSONL file of chat logs into conversations. Each line is one conversation in OpenAI chat format (<code>messages</code>, optional <code>tools</code>). Other formats: see <a href="https://github.com/nstream-ai/graduate#trace-formats">trace formats</a> in the README.</p>
 <pre><code><span class="kw">from</span> graduate.ingest <span class="kw">import</span> ingest, report
 <span class="kw">from</span> graduate.core <span class="kw">import</span> slice_of
 

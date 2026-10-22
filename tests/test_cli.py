@@ -7,6 +7,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
+import pytest
+
 from graduate.cli import main, openai_messages
 
 TOOLS = [
@@ -126,3 +128,61 @@ def test_certify_end_to_end(tmp_path: Path) -> None:
     assert card["certified_call_share"] == 1.0
     assert "not compared" in (out / "card.md").read_text()
     assert (out / "card.md").exists() and (out / "proposals.jsonl").exists()
+
+
+def _run(traces: Path, out: Path, url: str, model: str = "fake", *extra: str) -> None:
+    main(["certify", str(traces), "--base-url", url, "--model", model, "--out", str(out), *extra])
+
+
+def _serve():
+    server = HTTPServer(("127.0.0.1", 0), Candidate)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, f"http://127.0.0.1:{server.server_port}/v1"
+
+
+def test_cache_is_tied_to_the_candidate(tmp_path: Path) -> None:
+    traces = tmp_path / "t.jsonl"
+    traces.write_text("\n".join(json.dumps(_trace(i)) for i in range(5)))
+    server, url = _serve()
+    try:
+        _run(traces, tmp_path / "r", url)
+        with pytest.raises(SystemExit) as e:  # another model, same --out: refused, not reused
+            _run(traces, tmp_path / "r", url, "other")
+        assert e.value.code == 2
+        _run(traces, tmp_path / "r", url, "other", "--fresh")
+    finally:
+        server.shutdown()
+    assert json.loads((tmp_path / "r" / "card.json").read_text())["candidate"] == "other"
+
+
+def test_failed_requests_are_not_cached_and_all_failing_exits(tmp_path: Path) -> None:
+    traces = tmp_path / "t.jsonl"
+    traces.write_text("\n".join(json.dumps(_trace(i)) for i in range(5)))
+    with pytest.raises(SystemExit) as e:  # nothing listening there
+        _run(traces, tmp_path / "r", "http://127.0.0.1:9/v1")
+    assert e.value.code == 2
+    lines = (tmp_path / "r" / "proposals.jsonl").read_text().splitlines()
+    assert len(lines) == 1 and "_cache" in lines[0]  # only the header: failures are not kept
+    server, url = _serve()
+    try:
+        with pytest.raises(SystemExit):  # the cache was made for another --base-url
+            _run(traces, tmp_path / "r", url)
+        _run(traces, tmp_path / "r", url, "fake", "--fresh")
+    finally:
+        server.shutdown()
+    assert json.loads((tmp_path / "r" / "card.json").read_text())["failed_requests"] == 0
+
+
+def test_bad_inputs_exit_with_a_message(tmp_path: Path, capsys) -> None:
+    bad = tmp_path / "bad.jsonl"
+    bad.write_text('{"messages": []}\nnot json\n')
+    for args, needle in [
+        ([str(tmp_path / "missing.jsonl")], "no such file"),
+        ([str(bad)], "not valid JSON"),
+    ]:
+        with pytest.raises(SystemExit) as e:
+            main(["certify", *args, "--base-url", "http://127.0.0.1:9/v1", "--model", "m"])
+        assert e.value.code == 2 and needle in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        main(["certify", str(bad), "--base-url", "u", "--model", "m", "--alpha", "5"])
+    assert "fraction" in capsys.readouterr().err

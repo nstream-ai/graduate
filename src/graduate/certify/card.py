@@ -24,6 +24,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from graduate.certify.stats import (
+    accepted_samples_needed,
     benjamini_hochberg,
     betting_risk_test,
     bonferroni,
@@ -92,10 +93,14 @@ class ReportCard:
         rows = [head]
         for r in sorted(self.slices, key=lambda r: -r.calls)[:top]:
             verdict = "GRADUATED" if r.certified else "-"
-            if multi:
+            if multi and not r.certified:
                 verdict += f"  (binding: {r.binding})"
             if not r.certified and not r.gates[r.binding].feasible:
-                verdict += "  [cannot pass with this much evidence]"
+                a = self.alphas[r.binding]
+                need = accepted_samples_needed(r.rate, a, self.delta) if r.rate < a else None
+                if need:  # at or above alpha it fails on disagreement, not on evidence
+                    more = max(1, need - r.sessions)
+                    verdict += f"  [not enough evidence: ~{more:,} more conversations]"
             rows.append(
                 f"{r.slice[:51]:<52}{r.cap:>4}{r.sessions:>6}{r.calls:>7}{r.rate:>7.3f}"
                 f"{r.upper:>7.3f}{r.pvalue:>8.3f}{r.call_share:>7.3f}  {verdict}"

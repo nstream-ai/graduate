@@ -1,6 +1,7 @@
-"""Fixtures copy the shapes found in open datasets (research/report/trace-variation.md)."""
+"""Fixtures copy the shapes found in open datasets."""
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -19,7 +20,7 @@ from graduate.ingest import (
     write_sessions,
 )
 
-DATA = Path(__file__).resolve().parents[4] / "research" / "data" / "open"
+DATA = Path(os.environ.get("GRADUATE_OPEN_DATA", "open-data"))  # local copies of open datasets
 TOOLS = [{"type": "function", "function": {"name": "get_price", "parameters": {"type": "object"}}}]
 
 
@@ -270,7 +271,7 @@ def test_round_trip_and_report(tmp_path: Path) -> None:
     assert "repaired" in r.render()
 
 
-# ---------- real samples (skipped when research/data/open is absent) ----------
+# ---------- real samples (skipped unless GRADUATE_OPEN_DATA points at local copies) ----------
 
 REAL = [
     ("toucan", "toucan/train-00000-of-00047.parquet"),
@@ -290,7 +291,7 @@ REAL = [
 def test_real_samples_convert(preset: str, rel: str) -> None:
     path = DATA / rel
     if not path.exists():
-        pytest.skip("open dataset samples not fetched (research/datasets/fetch.py)")
+        pytest.skip("open dataset samples not available (set GRADUATE_OPEN_DATA)")
     r = report(ingest(path, preset, limit=None if preset == "hermes" else 300))
     assert r.sessions > 0 and r.calls > 0
     assert r.tool_calls_failed <= 0.02 * max(r.tool_calls, 1)

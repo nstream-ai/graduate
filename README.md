@@ -14,23 +14,39 @@ Website: https://nstream-ai.github.io/graduate/ (experiments overview at `/grid/
 
 ## Quick start
 
+Requires Python 3.12 or later.
+
 ```bash
 pip install "git+https://github.com/nstream-ai/graduate.git"
 ```
 
-Serve a candidate behind any OpenAI-compatible endpoint (vLLM, Ollama or a hosted API), then
-certify it against your traces:
+See a report card in seconds, with a stand-in candidate and no model (from a clone of this repo):
 
 ```bash
-graduate certify traces.jsonl --preset openai --base-url http://localhost:8000/v1 --model <candidate> --out report/
+python examples/mock_candidate.py &
+graduate certify examples/traces.jsonl --base-url http://localhost:8000/v1 --model mock --out report/
+```
+
+Then point it at a real candidate behind any OpenAI-compatible endpoint. A small model on your
+CPU works: with [Ollama](https://ollama.com), `ollama pull <model>` and use
+`--base-url http://localhost:11434/v1 --model <model>`. `examples/README.md` also covers
+llama.cpp. On your own traces:
+
+```bash
+graduate certify traces.jsonl --preset openai --base-url http://localhost:11434/v1 --model <model> --out report/
 ```
 
 `traces.jsonl` holds one conversation per line in the OpenAI chat format
 (`{"id": ..., "messages": [...], "tools": [...]}`, with the reference model's `tool_calls` and
-the tool results). Presets also read Hermes-style traces and τ²-bench results (`--preset hermes`,
-`--preset tau2`). See `examples/` for a sample file.
+the tool results). Other formats: see [Trace formats](#trace-formats). Parquet input needs
+`pip install "graduate[parquet] @ git+https://github.com/nstream-ai/graduate.git"`.
 
-You get `report/card.md` and `report/card.json`:
+**API keys.** No key is sent unless you pass `--api-key-env NAME` (the environment variable
+holding the candidate endpoint's key; `--reference-api-key-env` for the reference). A local
+server (Ollama, llama.cpp, vLLM) needs none. That is how we run candidates in our own τ²-bench
+experiments: on a local server, with `--preset tau2` traces.
+
+You get, in `report/`:
 
 - **certified slices**: each slice is the candidate's proposed action (call type, tool, position
   in the session), which is what a router can see before deciding; a slice is certified when its
@@ -41,11 +57,40 @@ You get `report/card.md` and `report/card.json`:
   replied, the most common way a substitute fails;
 - optionally, the **reference's own noise** (`--reference-base-url`, `--reference-model`): a
   slice where your reference disagrees with itself at or above alpha cannot be certified by
-  agreement by anyone, and is reported as such.
+  agreement by anyone, and is reported as such;
+- `proposals.jsonl`: a cache of the candidate's answers. A rerun into the same folder resumes and
+  retries only failed requests. It is tied to the `--model` and `--base-url` it was made with, so
+  use a new `--out` for each candidate (or `--fresh` to ask again).
+
+`card.md` ends with a legend for the table. A slice that is not certified for lack of evidence
+says roughly how many more conversations it would need.
+
+## Terms
+
+- **Call**: every model turn in a conversation, a tool call or a text reply.
+- **Slice**: one kind of decision the candidate proposes, which a router can see before it
+  routes: agent node, call type (tool or text), tool name, and position in the conversation.
+- **alpha**: the disagreement rate you allow on a slice (default 0.05). **delta**: 1 − confidence
+  (default 0.05, so 95% confidence).
+- **cap**: calls counted per conversation and slice (default 1), so one long conversation cannot
+  certify a slice on its own.
+- **Reference noise**: how often your reference model disagrees with itself on the same state.
+
+## Trace formats
+
+| `--preset` | Reads |
+|---|---|
+| `openai` (default) | one conversation per line: `messages` (OpenAI chat format, `tool_calls` or legacy `function_call`), optional `tools` |
+| `hermes` | ShareGPT-style `conversations` with `<tool_call>` blocks (Hermes function calling) |
+| `toucan` | rows of the Toucan tool-agent dataset |
+| `nemotron` | rows of the Nemotron-Agentic dataset |
+| `nemotron-swe` | Nemotron software-engineering trajectories (first 100 steps) |
+| `swe-rebench` | SWE-rebench OpenHands trajectories |
+| `tau2` | τ²-bench simulation results; add the agent's system prompt and tool definitions to each simulation (`system`, `tools`) when you export them |
 
 ## What v0.1 certifies
 
-**Agreement with your reference model, per slice** ("claim A"): the candidate's action matches the
+**Agreement with your reference model, per slice**: the candidate's action matches the
 reference's on at least 1 − alpha of the slice's calls, with 1 − delta confidence. And,
 optionally, **the reference's own noise** on the same states.
 
@@ -109,6 +154,7 @@ template. Share counts and the card, not your customers' data.
 
 ```bash
 pip install -e ".[dev]"
+ruff check src tests
 pytest
 ```
 
