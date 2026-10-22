@@ -25,7 +25,6 @@ import argparse
 import contextlib
 import dataclasses
 import json
-import math
 import os
 import sys
 import urllib.request
@@ -35,7 +34,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
-from graduate.certify.card import plan_text, report_card
+from graduate.certify.card import above_gate, plan_text, report_card
 from graduate.certify.causes import (
     CAUSES,
     NORMALISER,
@@ -215,20 +214,30 @@ def slice_verdicts(
     card: Any, alpha: float, why: dict[str, Any] | None = None, calibration: dict | None = None
 ) -> list[dict]:
     """Per slice: the verdict and the smallest disagreement margin this evidence can resolve
-    (zero-event bound, about 3 / n sessions). A slice that cannot resolve alpha is "cannot be
-    decided with this evidence", which is not a failure."""
+    (zero-event bound, about 3 / n sessions). A slice whose disagreement is significantly at or
+    above alpha (one-sided lower bound >= alpha) is not certified and more evidence will not change
+    that; otherwise a slice not yet certified "cannot be decided with this evidence" (not a
+    failure), with the planner's range when its observed rate is below alpha."""
     out = []
     for r in card.slices:
         detectable = 3 / r.sessions if r.sessions else 1.0
-        note = f" ({plan_text(r.plan)})" if r.plan else ""
+        a = card.alphas[r.binding]
         if r.certified:
             verdict = "certified"
-        elif detectable > alpha:
-            verdict = "cannot be decided with this evidence" + (
-                note or f" (needs ~{math.ceil(3 / alpha)}+ sessions)"
+        elif above_gate(r.rate, r.certified_population, a, card.delta):
+            verdict = (
+                f"not certified: disagreement {r.rate:.0%} is significantly above alpha {a:g}; "
+                "more conversations will not help"
             )
+        elif r.rate >= a:
+            verdict = (
+                f"cannot be decided with this evidence: disagreement {r.rate:.0%} is not "
+                f"significantly above alpha {a:g}"
+            )
+        elif r.plan:
+            verdict = f"cannot be decided with this evidence: {plan_text(r.plan)}"
         else:
-            verdict = "not certified" + note
+            verdict = "not certified"
         row = {"slice": r.slice, "sessions": r.sessions, "calls": r.calls, "rate": r.rate,
                "upper": r.upper, "detectable_margin": detectable, "verdict": verdict}  # fmt: skip
         if r.plan:
@@ -283,31 +292,37 @@ def plan_history(card: Any, path: Path, fresh: bool = False) -> tuple[Any, dict[
     return dataclasses.replace(card, slices=slices), calibration
 
 
-def why_table(rows: list[dict[str, Any]]) -> str:
-    """card.md: one line per slice that is not certified and has disagreements."""
-    failing = [r for r in rows if r["verdict"] != "certified" and r.get("disagreement_causes")]
+def _names(x: Any) -> str:
+    return ", ".join(x) if isinstance(x, list) else str(x)
+
+
+def why_table(rows: list[dict[str, Any]], forgiven: list[str] | None = None) -> str:
+    """card.md: one line per slice with disagreements that is not certified, or whose format-only
+    differences --normalise-args counted as agreement (marked as such)."""
+    forgiven = set(forgiven or [])
+    failing = [r for r in rows if r.get("disagreement_causes")
+               and (r["verdict"] != "certified" or r["slice"] in forgiven)]  # fmt: skip
     if not failing:
         return ""
     head = "\n### Why slices disagree (one cause per call; example values redacted: digits as 0)\n"
     lines = [head, "| slice | causes | example |", "|---|---|---|"]
     for r in failing:
-        causes = ", ".join(f"{c} {v:.0%}" for c, v in r["disagreement_causes"].items())
+        causes = ", ".join(
+            f"{c} {v:.0%}"
+            + (
+                " (counted as agreement: --normalise-args)"
+                if c == "format-only argument" and r["slice"] in forgiven
+                else ""
+            )
+            for c, v in r["disagreement_causes"].items()
+        )
         e = r["example"]
         if "argument" in e:
             ref, cand = (json.dumps(redact(e[k])) for k in ("reference_value", "candidate_value"))
             ex = f"`{e['tool']}.{e['argument']}`: reference {ref}, candidate {cand}"
         else:
-            ex = f"reference {e['reference']}, candidate {e['candidate']}"
+            ex = f"reference {_names(e['reference'])}, candidate {_names(e['candidate'])}"
         lines.append(f"| {r['slice']} | {causes} | {ex} |")
-    return "\n".join(lines) + "\n"
-
-
-def verdict_table(rows: list[dict[str, Any]], alpha: float) -> str:
-    lines = [f"\n| slice | sessions | disagreement (upper) | detectable margin | verdict at alpha "
-             f"{alpha:g} |", "|---|---|---|---|---|"]  # fmt: skip
-    for r in rows:
-        lines.append(f"| {r['slice']} | {r['sessions']} | {r['rate']:.1%} ({r['upper']:.1%}) | "
-                     f"{r['detectable_margin']:.1%} | {r['verdict']} |")  # fmt: skip
     return "\n".join(lines) + "\n"
 
 
@@ -386,7 +401,8 @@ def compare_cmd(args: Any, out: Path) -> None:
 CARD_LEGEND = """How to read the table: a slice is one kind of decision the candidate proposes
 (agent node / call type / tool / position bucket in the conversation). sess = conversations
 counted; calls = calls in the slice; rate = observed disagreement with the reference;
-upper = its 1 - delta upper bound; p = p-value after the multiplicity correction; share =
+upper = its 1 - delta upper bound; detect = the smallest disagreement rate this many
+conversations can rule out (about 3 / sess); p = p-value after the multiplicity correction; share =
 fraction of all calls. GRADUATED = certified at alpha: a router may send this slice to the
 candidate. "-" = not certified; "not enough evidence" says how many more conversations a
 slice would likely need at its observed rate.
@@ -637,8 +653,13 @@ def main(argv: list[str] | None = None) -> None:
         f"at alpha {args.alpha:g}, confidence {1 - args.delta:.0%}.\n\n"
         f"Replied instead of acting: {decision['replied_instead_of_acting']:.1%}; acted "
         f"instead of replying: {decision['acted_instead_of_replying']:.1%}; overall "
-        f"agreement {decision['agreement']:.1%}. Argument normaliser v{NORMALISER_VERSION}: "
-        f"{NORMALISER}. "
+        f"agreement {decision['agreement']:.1%}. "
+        + (
+            f"Format-only argument differences (normaliser v{NORMALISER_VERSION}) are reported "
+            "below, not forgiven; --normalise-args forgives them. "
+            if not decision["forgiven_format_only"]
+            else ""
+        )
         + (
             "**Format-only differences counted as agreement** (--normalise-args) for slices: "
             + ", ".join(decision["forgiven_format_only"])
@@ -649,8 +670,8 @@ def main(argv: list[str] | None = None) -> None:
         + f"A call is every model turn: a tool call or "
         f"a text reply. Text replies agree by decision only (reply vs act); their wording is not "
         f"compared.\n\n```\n{card.render(top=40)}\n```\n\n{CARD_LEGEND}"
-        + verdict_table(report["slices"], args.alpha)
-        + why_table(report["slices"])
+        + f"Argument normaliser v{NORMALISER_VERSION}: {NORMALISER}.\n"
+        + why_table(report["slices"], decision["forgiven_format_only"])
     )
     if noise:
         md += (

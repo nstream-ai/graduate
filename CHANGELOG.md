@@ -16,11 +16,19 @@ Certification by effect and session-level comparison: the methods the paper uses
 - `graduate compare`: paired session-level regret of a candidate or hybrid against the reference
   on the same tasks, with its bound and the smallest detectable regret; reads JSONL or τ²-bench
   results.
-- `graduate certify`: per-slice smallest detectable margin in `card.json` and `card.md`.
+- `graduate certify`: a `detect` column, the smallest disagreement rate the slice's conversations
+  can rule out. A slice whose disagreement is significantly above alpha (its one-sided lower
+  bound reaches alpha) is "not certified" and says more conversations will not help; every other
+  slice not yet certified "cannot be decided with this evidence", with the planner's range when
+  its observed rate is below alpha. card.md has one per-slice table; the second stays in
+  card.json. Format-only causes that `--normalise-args` forgave are marked as such, the card says
+  whether the normaliser was applied (its rule is in the legend), and tool names print plainly.
 - `claim-b` cards report `cap_max_informative`: the largest router cap for which the per-turn
   bound still supports the session margin under the union bound.
-- Prompting and tool-call parsing move from `graduate.train` to `graduate.prompting`; the package
-  contains no training code.
+- **Import path renamed:** `graduate.train` is now `graduate.prompting` (`to_chat`,
+  `tools_spec`, `parse_completion`, the Gemma parser). Code that imported
+  `graduate.train.decode` or `graduate.train.data` from v0.1 must change its imports. No trainer
+  was ever included; the old name only held prompting and parsing.
 
 ## [0.1.3] - 2026-10-22
 

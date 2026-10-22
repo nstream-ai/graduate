@@ -176,3 +176,16 @@ def test_planner_is_deterministic_and_resamples_whole_conversations():
     e, a = np.array([0, 2, 0, 0]), np.array([2, 2, 2, 2])
     first = more_sessions_needed(e, a, 0.3, 2, 0.05)
     assert first is not None and first == more_sessions_needed(e, a, 0.3, 2, 0.05)
+
+
+def _one_slice(wrong: int, n: int):
+    keys = ["s"] * n
+    sess = [f"c{i}" for i in range(n)]
+    return report_card(keys, sess, [i < wrong for i in range(n)], cap=1, plan=False)
+
+
+def test_more_conversations_will_not_help_only_when_significantly_above_alpha():
+    thin = _one_slice(1, 5).render()  # observed 20%, but the true rate may well be under 5%
+    assert "will not help" not in thin and "not significantly above" in thin
+    clear = _one_slice(20, 20).render()  # 20 of 20: the lower bound is far above 5%
+    assert "will not help" in clear
