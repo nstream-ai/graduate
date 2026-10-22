@@ -3,17 +3,6 @@ Copyright 2026 The Graduate Authors
 
 This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 
-Third-party material
---------------------
-
-tests/train/fixtures/gemma4_chat_template.jinja
-  The Gemma 4 chat template, published by Google with the Gemma 4 models
-  (https://huggingface.co/google/gemma-4-E4B-it). Copyright Google LLC.
-  Licensed under the Apache License, Version 2.0; Gemma 4 license terms:
-  https://ai.google.dev/gemma/docs/gemma_4_license
-  Included unmodified as a test fixture, so the chat-format code is tested
-  against the real template. Gemma is a trademark of Google LLC.
-
 Data formats
 ------------
 
