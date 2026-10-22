@@ -238,11 +238,19 @@ def test_card_says_why_a_slice_disagrees_and_normalise_args_is_opt_in(tmp_path: 
     md = (tmp_path / "strict" / "card.md").read_text()
     assert "Why slices disagree" in md and '"#W0000"' in md and '"W0000"' in md  # redacted
     assert "#W1000" not in md
+    # the verdict follows the observed rate: 100% disagreement is not "collect more data"
+    assert tool["verdict"].startswith("not certified: disagreement 100% is above alpha")
+    assert "needs ~" not in md and "more conversations will not help" in md
+    assert "reported below, not forgiven" in md  # the normaliser was not applied
+    assert "| slice | sessions |" not in md  # one per-slice table in card.md
     assert strict["normaliser"]["version"] == "1" and not strict["format_only_counted_as_agreement"]
     lenient = json.loads((tmp_path / "lenient" / "card.json").read_text())
     assert any("get_order" in s for s in lenient["certified_slices"])
     assert lenient["format_only_counted_as_agreement"]
-    assert "counted as agreement" in (tmp_path / "lenient" / "card.md").read_text()
+    lenient_md = (tmp_path / "lenient" / "card.md").read_text()
+    assert "counted as agreement" in lenient_md
+    assert "format-only argument 100% (counted as agreement: --normalise-args)" in lenient_md
+    assert "not forgiven" not in lenient_md
 
 
 def test_planner_history_is_monotone_and_records_calibration(tmp_path: Path) -> None:
@@ -269,3 +277,14 @@ def test_planner_history_is_monotone_and_records_calibration(tmp_path: Path) -> 
     assert calibration["text"]["previous_prediction"]["sessions"] == 59
     plan_history(card(40), path, fresh=True)  # --fresh: history starts again
     assert json.loads(path.read_text())["text"][0]["sessions"] == 40
+
+
+def test_causes_table_prints_tool_names_not_python_lists() -> None:
+    from graduate.cli import why_table
+
+    rows = [{"slice": "agent/tool/cancel_order/1", "verdict": "not certified",
+             "disagreement_causes": {"wrong tool": 1.0},
+             "example": {"cause": "wrong tool", "reference": ["get_order"],
+                         "candidate": ["cancel_order"]}}]  # fmt: skip
+    md = why_table(rows)
+    assert "reference get_order, candidate cancel_order" in md and "['" not in md

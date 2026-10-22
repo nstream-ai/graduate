@@ -61,9 +61,13 @@ You get, in `report/`:
 - `proposals.jsonl`: a cache of the candidate's answers. A rerun into the same folder resumes and
   retries only failed requests. It is tied to the `--model` and `--base-url` it was made with, so
   use a new `--out` for each candidate (or `--fresh` to ask again).
+- `planner.json`: the evidence estimate's memory across reruns into the same folder, so the
+  "more conversations" target does not move closer unless the disagreement rate improved.
 
 `card.md` ends with a legend for the table. A slice that is not certified for lack of evidence
-says roughly how many more conversations it would need.
+gives a range of how many more conversations it would need; a slice whose disagreement is already
+above alpha says that more conversations will not help. "Why slices disagree" gives one cause per
+disagreeing call and an example with its values redacted.
 
 ## Terms
 

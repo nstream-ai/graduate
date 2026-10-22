@@ -169,7 +169,7 @@ class ReportCard:
         multi = len(self.alphas) > 1
         head = (
             f"{'slice':<52}{'cap':>4}{'sess':>6}{'calls':>7}{'rate':>7}{'upper':>7}"
-            f"{'p':>8}{'share':>7}  verdict"
+            f"{'detect':>7}{'p':>8}{'share':>7}  verdict"
         )
         rows = [head]
         for r in sorted(self.slices, key=lambda r: -r.calls)[:top]:
@@ -178,9 +178,15 @@ class ReportCard:
                 verdict += f"  (binding: {r.binding})"
             if r.plan:
                 verdict += f"  [{plan_text(r.plan)}]"
+            elif not r.certified and r.rate >= self.alphas[r.binding]:
+                verdict += (
+                    f"  [disagreement {r.rate:.0%} is above alpha {self.alphas[r.binding]:g}: "
+                    "more conversations will not help]"
+                )
+            detect = 3 / r.sessions if r.sessions else 1.0  # smallest rate n can rule out
             rows.append(
                 f"{r.slice[:51]:<52}{r.cap:>4}{r.sessions:>6}{r.calls:>7}{r.rate:>7.3f}"
-                f"{r.upper:>7.3f}{r.pvalue:>8.3f}{r.call_share:>7.3f}  {verdict}"
+                f"{r.upper:>7.3f}{detect:>7.3f}{r.pvalue:>8.3f}{r.call_share:>7.3f}  {verdict}"
             )
         caps = "per slice (dev)" if isinstance(self.cap, dict) else f"{self.cap}"
         gates = ", ".join(f"{g} <= {a}" for g, a in self.alphas.items())
