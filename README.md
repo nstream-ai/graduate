@@ -148,7 +148,8 @@ use them this way is your responsibility.
 The point of this release is to run it on **your** traces. If the card says something that does
 not match what you see in production (a slice certified that should not be, a format we cannot
 read, a candidate failure the card misses), please open an issue with the "Report from my traces"
-template. Share counts and the card, not your customers' data.
+template. Share counts and `card.md` (example values are redacted there), not `card.json`,
+which keeps raw values from your traces, and not your customers' data.
 
 ## Development
 

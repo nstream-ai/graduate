@@ -669,7 +669,7 @@ plan_evidence(risk_estimate=<span class="nu">0.02</span>, coverage=<span class="
     new ResizeObserver(draw).observe(holder);
   }
 
-  // 1. Validity: worst false-certification rate (research/sim/figures.py, ADRs 0002–0007, 0011, 0012).
+  // 1. Validity: worst false-certification rate.
   const shortcuts = [
     ['All calls treated as independent (strong clustering)', 0.485],
     ['Cluster-robust CLT, real long sessions', 0.101],
@@ -709,7 +709,7 @@ plan_evidence(risk_estimate=<span class="nu">0.02</span>, coverage=<span class="
     table: { cols: ['Error limit', 'Conversations needed (zero mistakes)'], rows: limits.map(e => [e + '%', floorN(e)]) },
   });
 
-  // 3. Real-traffic trade-off (ADR 0007).
+  // 3. Real-traffic trade-off.
   const caps = [
     { name: 'Handles 10% of calls', cap: 10, color: '--s1', p: [0.88, 1, 1] },
     { name: 'Handles 51% of calls', cap: 100, color: '--s2', p: [0.79, 1, 1] },

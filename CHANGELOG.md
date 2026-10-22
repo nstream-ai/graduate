@@ -3,6 +3,12 @@
 All notable changes to this project are listed here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [0.1.3] - 2026-10-22
+
+- README: share `card.md` (example values redacted) when reporting, not `card.json`, which keeps
+  raw values from your traces.
+- Website: two source comments no longer name internal files.
+
 ## [0.1.2] - 2026-10-22
 
 Two report-card fixes from a second new-user walkthrough.
@@ -54,6 +60,7 @@ First public release.
 - Trace ingest with presets for OpenAI chat, Hermes, Toucan, Nemotron, SWE-rebench and τ²-bench.
 - Session-level time-ordered splits, deduplication and slicing.
 
+[0.1.3]: https://github.com/nstream-ai/graduate/releases/tag/v0.1.3
 [0.1.2]: https://github.com/nstream-ai/graduate/releases/tag/v0.1.2
 [0.1.1]: https://github.com/nstream-ai/graduate/releases/tag/v0.1.1
 [0.1.0]: https://github.com/nstream-ai/graduate/releases/tag/v0.1.0
