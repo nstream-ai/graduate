@@ -24,7 +24,6 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from graduate.certify.stats import (
-    accepted_samples_needed,
     benjamini_hochberg,
     betting_risk_test,
     bonferroni,
@@ -34,6 +33,84 @@ from graduate.certify.stats import (
 )
 
 MIXTURE = (0.5, 0.75, 0.9, 0.99)
+# Planner: how many more conversations a slice needs, with the card's own test.
+PLAN_FUTURES = 200  # simulated futures per slice and level
+PLAN_POWER = 0.8  # the estimate is where this share of futures has passed
+PLAN_MAX_MORE = 20_000
+NEAR_MARGIN = "estimates near the margin are unreliable; this is a range, not a promise."
+
+
+def more_sessions_needed(
+    errors: ArrayLike,
+    accepted: ArrayLike,
+    alpha: float,
+    cap: int,
+    level: float,
+    futures: int = PLAN_FUTURES,
+    power: float = PLAN_POWER,
+    max_more: int = PLAN_MAX_MORE,
+    seed: int = 0,
+) -> int | None:
+    """Conversations to add until `power` of simulated futures pass the card's betting test at
+    `level`. A future keeps the real conversations in order and appends whole conversations
+    resampled with replacement (so the within-conversation dependence the test sees is kept;
+    resampling single calls would assume independent calls). None: more than `max_more`."""
+    e = np.asarray(errors, dtype=np.float64)
+    a = np.asarray(accepted, dtype=np.float64)
+    n = e.size
+    if n == 0:
+        return None
+    rng = np.random.default_rng(seed)
+    if (e == e[0]).all() and (a == a[0]).all():
+        futures = 1  # every conversation alike (e.g. no disagreement): every future is the same
+    horizon = max(64, 2 * n)
+    while True:
+        firsts = np.full(futures, np.inf)
+        for f in range(futures):
+            pick = rng.integers(0, n, size=horizon)
+            path = betting_risk_test(np.concatenate([e, e[pick]]), np.concatenate([a, a[pick]]),
+                                     alpha, cap, c=MIXTURE).capital  # fmt: skip
+            hit = np.flatnonzero(path >= 1.0 / level)
+            if hit.size:
+                firsts[f] = max(0, int(hit[0]) + 1 - n)
+        q = float(np.sort(firsts)[int(np.ceil(power * futures)) - 1])  # inf-safe quantile
+        if np.isfinite(q):
+            return int(np.ceil(q))
+        if horizon >= max_more:
+            return None
+        horizon = min(max_more, horizon * 4)
+
+
+def slice_plan(counts: tuple, gate: GateResult, cap: int, delta: float, m: int) -> dict | None:
+    """The planner's range for one slice (None at or above alpha: more evidence cannot help)."""
+    e, a = counts
+    if not e.size or not gate.rate < gate.alpha:
+        return None
+    low = more_sessions_needed(e, a, gate.alpha, cap, delta)
+    high = more_sessions_needed(e, a, gate.alpha, cap, delta / max(1, m))
+    return {"at_sessions": int(e.size), "rate": gate.rate, "low": low, "high": high,
+            "criterion": f"{PLAN_POWER:.0%} of simulated futures pass",
+            "near_margin": near_margin(gate.rate, gate.alpha, int(a.sum()))}  # fmt: skip
+
+
+def plan_text(plan: dict) -> str:
+    def n(x: int | None) -> str:
+        return f"more than {PLAN_MAX_MORE:,}" if x is None else f"~{max(1, x):,}"
+
+    lo, hi = plan["low"], plan["high"]
+    span = f"at least {n(lo)}" + (f", up to {n(hi)}" if hi != lo else "")
+    text = f"not enough evidence: {span} more conversations ({plan['criterion']})"
+    return text + ("; " + NEAR_MARGIN if plan.get("near_margin") else "")
+
+
+def near_margin(rate: float, alpha: float, population: int) -> bool:
+    """The observed rate is within two standard errors of alpha (its own standard error: a rate
+    of 0 is not noisy, every simulated future then agrees)."""
+    if population <= 0 or rate <= 0:
+        return False
+    return alpha - rate <= 2 * np.sqrt(rate * (1 - rate) / population)
+
+
 ADJUST = {"bh": benjamini_hochberg, "holm": holm, "bonferroni": bonferroni}
 
 
@@ -59,6 +136,10 @@ class SliceResult:
     certified: bool
     call_share: float  # share of all calls the slice routes (inside the cap), if certified
     token_share: float
+    # planner, for a slice not certified with its observed rate under alpha: conversations to
+    # add, "low" at the uncorrected level delta (the most BH can give one slice) and "high" at
+    # delta / m (the BH worst case), each where PLAN_POWER of simulated futures pass
+    plan: dict | None = None
 
     @property
     def rate(self) -> float:
@@ -95,12 +176,8 @@ class ReportCard:
             verdict = "GRADUATED" if r.certified else "-"
             if multi and not r.certified:
                 verdict += f"  (binding: {r.binding})"
-            if not r.certified and not r.gates[r.binding].feasible:
-                a = self.alphas[r.binding]
-                need = accepted_samples_needed(r.rate, a, self.delta) if r.rate < a else None
-                if need:  # at or above alpha it fails on disagreement, not on evidence
-                    more = max(1, need - r.sessions)
-                    verdict += f"  [not enough evidence: ~{more:,} more conversations]"
+            if r.plan:
+                verdict += f"  [{plan_text(r.plan)}]"
             rows.append(
                 f"{r.slice[:51]:<52}{r.cap:>4}{r.sessions:>6}{r.calls:>7}{r.rate:>7.3f}"
                 f"{r.upper:>7.3f}{r.pvalue:>8.3f}{r.call_share:>7.3f}  {verdict}"
@@ -159,6 +236,7 @@ def report_card(
     default_cap: int = 20,
     multiplicity: str = "bh",
     min_sessions: int = 1,
+    plan: bool = True,
 ) -> ReportCard:
     """Rows must be in arrival order (sessions in time order, calls in session order).
 
@@ -200,6 +278,7 @@ def report_card(
             continue
         _, codes = np.unique(sess[idx], return_inverse=True)
         results: dict[str, GateResult] = {}
+        counts: dict[str, tuple] = {}
         n_sessions, population = 0, 0
         for g, f in flags.items():
             e, a = session_counts(codes, np.ones(idx.size, dtype=bool), f[idx], k)
@@ -216,9 +295,10 @@ def report_card(
             # The evidence floor (about 3 / n): with these sessions, could a perfect candidate pass?
             best = ratio_upper_bound(np.zeros_like(a), a, k, delta) if a.size else 1.0
             results[g] = GateResult(a_eff, rate, float(upper), float(p), feasible=best <= a_eff)
+            counts[g] = (e, a)
         binding = max(results, key=lambda g: results[g].pvalue)
         routed = idx[within_cap(sess[idx].tolist(), k)]
-        pre.append((name, idx, routed, k, n_sessions, population, results, binding))
+        pre.append((name, idx, routed, k, n_sessions, population, results, binding, counts))
     pvals = np.array([x[6][x[7]].pvalue for x in pre]) if pre else np.zeros(0)
     passed = ADJUST[multiplicity](pvals, delta)
     out = [
@@ -234,8 +314,13 @@ def report_card(
             certified=bool(ok),
             call_share=routed.size / total_calls,
             token_share=float(tok[routed].sum()) / total_tokens,
+            plan=(
+                slice_plan(counts[binding], results[binding], k, delta, len(pre))
+                if plan and not ok
+                else None
+            ),
         )
-        for (name, idx, routed, k, n_sessions, population, results, binding), ok in zip(
+        for (name, idx, routed, k, n_sessions, population, results, binding, counts), ok in zip(
             pre, passed, strict=True
         )
     ]

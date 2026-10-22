@@ -22,7 +22,10 @@ candidate needs another --out, or --fresh). Failed requests are not cached: reru
 from __future__ import annotations
 
 import argparse
+import contextlib
+import dataclasses
 import json
+import math
 import os
 import sys
 import urllib.request
@@ -32,7 +35,15 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
-from graduate.certify.card import report_card
+from graduate.certify.card import plan_text, report_card
+from graduate.certify.causes import (
+    CAUSES,
+    NORMALISER,
+    NORMALISER_VERSION,
+    cause,
+    first_difference,
+    redact,
+)
 from graduate.core import ToolCall, action_of, agree, is_valid, routing_slice
 from graduate.core.slicing import action_type_and_tool
 from graduate.ingest import PRESETS, ingest
@@ -155,15 +166,29 @@ def certify(
     delta: float,
     cap: int,
     noisy: set[str] | None = None,
-) -> tuple[Any, dict[str, Any]]:
+    normalise_args: bool = False,
+) -> tuple[Any, dict[str, Any], dict[str, Any]]:
     keys, sess, gates = [], [], {"disagree": [], "invalid": []}
     split = Counter()
+    why: dict[str, Any] = {}  # slice -> {"causes": Counter, "example": first disagreeing call}
+    forgiven: set[str] = set()
     for r in rows:
         p = proposals[r["key"]]
         cand, ref = _action(p["calls"]), _action(r["reference"])
-        keys.append(str(routing_slice(r["node"], cand, r["index"])))
+        key = str(routing_slice(r["node"], cand, r["index"]))
+        keys.append(key)
         sess.append(r["session"])
-        gates["disagree"].append(not agree(cand, ref, "args"))
+        wrong = not agree(cand, ref, "args")
+        if wrong:
+            c = cause(p["calls"], r["reference"])
+            w = why.setdefault(key, {"causes": Counter(), "example": None})
+            w["causes"][c] += 1
+            if w["example"] is None:  # first disagreeing call in session order: deterministic
+                w["example"] = {"cause": c, **first_difference(p["calls"], r["reference"])}
+            if normalise_args and c == "format-only argument":
+                wrong = False
+                forgiven.add(key)
+        gates["disagree"].append(wrong)
         calls = [ToolCall(name=c["name"], arguments=c.get("arguments")) for c in p["calls"]]
         gates["invalid"].append(bool(calls) and not is_valid(calls, r["schemas"]))
         ck, rk = action_type_and_tool(cand)[0], action_type_and_tool(ref)[0]
@@ -182,7 +207,108 @@ def certify(
         / max(1, split["reference_replies"]),
         "agreement": 1 - sum(gates["disagree"]) / max(1, len(rows)),
     }
-    return card, decision
+    decision["forgiven_format_only"] = sorted(forgiven)
+    return card, decision, why
+
+
+def slice_verdicts(
+    card: Any, alpha: float, why: dict[str, Any] | None = None, calibration: dict | None = None
+) -> list[dict]:
+    """Per slice: the verdict and the smallest disagreement margin this evidence can resolve
+    (zero-event bound, about 3 / n sessions). A slice that cannot resolve alpha is "cannot be
+    decided with this evidence", which is not a failure."""
+    out = []
+    for r in card.slices:
+        detectable = 3 / r.sessions if r.sessions else 1.0
+        note = f" ({plan_text(r.plan)})" if r.plan else ""
+        if r.certified:
+            verdict = "certified"
+        elif detectable > alpha:
+            verdict = "cannot be decided with this evidence" + (
+                note or f" (needs ~{math.ceil(3 / alpha)}+ sessions)"
+            )
+        else:
+            verdict = "not certified" + note
+        row = {"slice": r.slice, "sessions": r.sessions, "calls": r.calls, "rate": r.rate,
+               "upper": r.upper, "detectable_margin": detectable, "verdict": verdict}  # fmt: skip
+        if r.plan:
+            row["more_conversations"] = r.plan
+        if r.slice in (calibration or {}):
+            row.update(calibration[r.slice])
+        w = (why or {}).get(r.slice)
+        if w:
+            n = sum(w["causes"].values())
+            row["disagreement_causes"] = {c: w["causes"][c] / n for c in CAUSES if w["causes"][c]}
+            row["example"] = w["example"]  # raw values here; card.md redacts them
+        out.append(row)
+    return out
+
+
+def plan_history(card: Any, path: Path, fresh: bool = False) -> tuple[Any, dict[str, Any]]:
+    """Keep the planner's "at least" from going down between runs into the same --out unless the
+    rate improved (adding conversations must not move the target further away), and record, per
+    certified slice, where it certified and what the planner predicted at the checkpoint before.
+    The history lives in planner.json next to the cache (same candidate; --fresh resets it)."""
+    hist: dict[str, list] = {}
+    if path.exists() and not fresh:
+        with contextlib.suppress(ValueError):
+            hist = json.loads(path.read_text())
+    slices, calibration = [], {}
+    for r in card.slices:
+        h = hist.setdefault(r.slice, [])
+        last = next((x for x in reversed(h) if "low_total" in x), None)
+        if r.plan:
+            plan = dict(r.plan)
+            if last and plan["rate"] >= last["rate"] - 1e-12:  # not better: never move it closer
+                for side in ("low", "high"):
+                    prev = last.get(f"{side}_total")
+                    if plan[side] is not None and prev is not None:
+                        plan[side] = max(plan[side], prev - r.sessions)
+            totals = {f"{k}_total": (None if plan[k] is None else r.sessions + plan[k])
+                      for k in ("low", "high")}  # fmt: skip
+            if not h or h[-1].get("sessions") != r.sessions:
+                h.append({"sessions": r.sessions, "rate": r.rate, **totals})
+            r = dataclasses.replace(r, plan=plan)
+        elif r.certified:
+            done = next((x for x in h if x.get("certified")), None)
+            if done is None:
+                done = {"sessions": r.sessions, "certified": True}
+                h.append(done)
+            calibration[r.slice] = {
+                "certified_at_sessions": done["sessions"],
+                "previous_prediction": last,  # None: certified at the first checkpoint
+            }
+        slices.append(r)
+    path.write_text(json.dumps(hist, indent=1))
+    return dataclasses.replace(card, slices=slices), calibration
+
+
+def why_table(rows: list[dict[str, Any]]) -> str:
+    """card.md: one line per slice that is not certified and has disagreements."""
+    failing = [r for r in rows if r["verdict"] != "certified" and r.get("disagreement_causes")]
+    if not failing:
+        return ""
+    head = "\n### Why slices disagree (one cause per call; example values redacted: digits as 0)\n"
+    lines = [head, "| slice | causes | example |", "|---|---|---|"]
+    for r in failing:
+        causes = ", ".join(f"{c} {v:.0%}" for c, v in r["disagreement_causes"].items())
+        e = r["example"]
+        if "argument" in e:
+            ref, cand = (json.dumps(redact(e[k])) for k in ("reference_value", "candidate_value"))
+            ex = f"`{e['tool']}.{e['argument']}`: reference {ref}, candidate {cand}"
+        else:
+            ex = f"reference {e['reference']}, candidate {e['candidate']}"
+        lines.append(f"| {r['slice']} | {causes} | {ex} |")
+    return "\n".join(lines) + "\n"
+
+
+def verdict_table(rows: list[dict[str, Any]], alpha: float) -> str:
+    lines = [f"\n| slice | sessions | disagreement (upper) | detectable margin | verdict at alpha "
+             f"{alpha:g} |", "|---|---|---|---|---|"]  # fmt: skip
+    for r in rows:
+        lines.append(f"| {r['slice']} | {r['sessions']} | {r['rate']:.1%} ({r['upper']:.1%}) | "
+                     f"{r['detectable_margin']:.1%} | {r['verdict']} |")  # fmt: skip
+    return "\n".join(lines) + "\n"
 
 
 CARD_LEGEND = """How to read the table: a slice is one kind of decision the candidate proposes
@@ -276,6 +402,12 @@ def main(argv: list[str] | None = None) -> None:
     c.add_argument("--out", default="graduate-report", help="output folder")
     c.add_argument(
         "--fresh", action="store_true", help="ignore cached answers in --out and ask again"
+    )
+    c.add_argument(
+        "--normalise-args",
+        action="store_true",
+        help="count format-only argument differences (e.g. 'W1000' for '#W1000') as agreement; "
+        "default: reported, not forgiven",
     )
     args = ap.parse_args(argv)
     out = Path(args.out)
@@ -374,7 +506,10 @@ def main(argv: list[str] | None = None) -> None:
         noise = {k: sum(v) / len(v) for k, v in by.items()}
         noisy = {k for k, v in noise.items() if v >= args.alpha}
 
-    card, decision = certify(rows, proposals, args.alpha, args.delta, args.cap, noisy)
+    card, decision, why = certify(
+        rows, proposals, args.alpha, args.delta, args.cap, noisy, args.normalise_args
+    )
+    card, calibration = plan_history(card, out / "planner.json", fresh=args.fresh)
     report = {
         "candidate": args.model,
         "reference_calls": len(rows),
@@ -385,6 +520,9 @@ def main(argv: list[str] | None = None) -> None:
         "cap": args.cap,
         "certified_call_share": card.certified_call_share,
         "certified_slices": [r.slice for r in card.slices if r.certified],
+        "slices": slice_verdicts(card, args.alpha, why, calibration),
+        "normaliser": {"version": NORMALISER_VERSION, "rule": NORMALISER},
+        "format_only_counted_as_agreement": decision["forgiven_format_only"],
         "decision_split": decision,
         "reference_self_disagreement": noise,
         "too_noisy_to_certify_by_agreement": sorted(noisy),
@@ -401,9 +539,20 @@ def main(argv: list[str] | None = None) -> None:
         f"at alpha {args.alpha:g}, confidence {1 - args.delta:.0%}.\n\n"
         f"Replied instead of acting: {decision['replied_instead_of_acting']:.1%}; acted "
         f"instead of replying: {decision['acted_instead_of_replying']:.1%}; overall "
-        f"agreement {decision['agreement']:.1%}. A call is every model turn: a tool call or "
+        f"agreement {decision['agreement']:.1%}. Argument normaliser v{NORMALISER_VERSION}: "
+        f"{NORMALISER}. "
+        + (
+            "**Format-only differences counted as agreement** (--normalise-args) for slices: "
+            + ", ".join(decision["forgiven_format_only"])
+            + ". "
+            if decision["forgiven_format_only"]
+            else ""
+        )
+        + f"A call is every model turn: a tool call or "
         f"a text reply. Text replies agree by decision only (reply vs act); their wording is not "
         f"compared.\n\n```\n{card.render(top=40)}\n```\n\n{CARD_LEGEND}"
+        + verdict_table(report["slices"], args.alpha)
+        + why_table(report["slices"])
     )
     if noise:
         md += (

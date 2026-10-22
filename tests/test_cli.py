@@ -127,6 +127,9 @@ def test_certify_end_to_end(tmp_path: Path) -> None:
     assert card["decision_split"]["replied_instead_of_acting"] == 0.0
     assert card["certified_call_share"] == 1.0
     assert "not compared" in (out / "card.md").read_text()
+    verdicts = {r["slice"]: r["verdict"] for r in card["slices"]}
+    assert all(v == "certified" for v in verdicts.values())
+    assert all(abs(r["detectable_margin"] - 3 / r["sessions"]) < 1e-12 for r in card["slices"])
     assert (out / "card.md").exists() and (out / "proposals.jsonl").exists()
 
 
@@ -186,3 +189,83 @@ def test_bad_inputs_exit_with_a_message(tmp_path: Path, capsys) -> None:
     with pytest.raises(SystemExit):
         main(["certify", str(bad), "--base-url", "u", "--model", "m", "--alpha", "5"])
     assert "fraction" in capsys.readouterr().err
+
+
+class HashlessCandidate(Candidate):
+    """Calls the right tool but drops the '#' from the order id, like a real small model."""
+
+    def do_POST(self) -> None:
+        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        last = body["messages"][-1]
+        if last["role"] == "user":
+            oid = last["content"].split()[-1].rstrip("?").lstrip("#")
+            call = {"name": "get_order", "arguments": json.dumps({"id": oid})}
+            msg = {"role": "assistant", "content": None,
+                   "tool_calls": [{"id": "x", "type": "function", "function": call}]}  # fmt: skip
+        else:
+            msg = {"role": "assistant", "content": "Done."}
+        out = json.dumps({"choices": [{"message": msg}]}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(out)
+
+
+def test_card_says_why_a_slice_disagrees_and_normalise_args_is_opt_in(tmp_path: Path) -> None:
+    traces = tmp_path / "t.jsonl"
+    rows = []
+    for i in range(120):
+        t = _trace(i)
+        t["messages"][1]["content"] = f"Where is order #W{1000 + i}?"
+        t["messages"][2]["tool_calls"][0]["function"]["arguments"] = json.dumps(
+            {"id": f"#W{1000 + i}"}
+        )
+        rows.append(json.dumps(t))
+    traces.write_text("\n".join(rows))
+    server = HTTPServer(("127.0.0.1", 0), HashlessCandidate)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{server.server_port}/v1"
+    try:
+        _run(traces, tmp_path / "strict", url)
+        _run(traces, tmp_path / "lenient", url, "fake", "--normalise-args")
+    finally:
+        server.shutdown()
+    strict = json.loads((tmp_path / "strict" / "card.json").read_text())
+    tool = next(r for r in strict["slices"] if "get_order" in r["slice"])
+    assert tool["verdict"] != "certified" and tool["rate"] == 1.0
+    assert tool["disagreement_causes"] == {"format-only argument": 1.0}
+    assert tool["example"]["reference_value"] == "#W1000"  # first in session order, raw in json
+    md = (tmp_path / "strict" / "card.md").read_text()
+    assert "Why slices disagree" in md and '"#W0000"' in md and '"W0000"' in md  # redacted
+    assert "#W1000" not in md
+    assert strict["normaliser"]["version"] == "1" and not strict["format_only_counted_as_agreement"]
+    lenient = json.loads((tmp_path / "lenient" / "card.json").read_text())
+    assert any("get_order" in s for s in lenient["certified_slices"])
+    assert lenient["format_only_counted_as_agreement"]
+    assert "counted as agreement" in (tmp_path / "lenient" / "card.md").read_text()
+
+
+def test_planner_history_is_monotone_and_records_calibration(tmp_path: Path) -> None:
+    from graduate.certify.card import report_card
+    from graduate.cli import plan_history
+
+    def card(n: int):
+        keys, sess, wrong = [], [], []
+        for i in range(n):
+            keys += ["tool", "text"]
+            sess += [f"s{i:04d}"] * 2
+            wrong += [True, False]
+        return report_card(keys, sess, wrong, cap=1)
+
+    path = tmp_path / "planner.json"
+    first, _ = plan_history(card(40), path)
+    target = 40 + next(r for r in first.slices if r.slice == "text").plan["low"]
+    for n in (45, 50, 59):  # same rate (0): the promised total may not come closer
+        c, _ = plan_history(card(n), path)
+        assert n + next(r for r in c.slices if r.slice == "text").plan["low"] >= target
+    done, calibration = plan_history(card(300), path)
+    assert next(r for r in done.slices if r.slice == "text").certified
+    assert calibration["text"]["certified_at_sessions"] == 300
+    assert calibration["text"]["previous_prediction"]["sessions"] == 59
+    plan_history(card(40), path, fresh=True)  # --fresh: history starts again
+    assert json.loads(path.read_text())["text"][0]["sessions"] == 40
