@@ -311,6 +311,78 @@ def verdict_table(rows: list[dict[str, Any]], alpha: float) -> str:
     return "\n".join(lines) + "\n"
 
 
+def claim_b(args: Any, out: Path) -> None:
+    """`graduate claim-b`: per-slice and per-session certificate by effect from fork rows."""
+    from graduate.certify.fork import card_pairs, fork_card, routing_table
+
+    rows = []
+    for path in args.forks.split(","):
+        with Path(path).open() as f:
+            rows += [json.loads(line) for line in f if line.strip()]
+    ns = argparse.Namespace(pool_positions=not args.by_position)
+    card = fork_card(card_pairs(rows, ns), session_margin=args.session_margin, cap=args.cap,
+                     serving=json.loads(args.serving))  # fmt: skip
+    card["routing"] = routing_table(card)
+    (out / "claim_b.json").write_text(json.dumps(card, indent=2, default=str))
+    d, f = card["delta_turn"], card.get("reference_floor") or {}
+    md = [f"# Claim B by effect: {card['n_states']:,} forked states",
+          f"\nPer routed turn: signed net harm <= {d:.1%} (session margin "
+          f"{args.session_margin:.0%} / cap {args.cap}); per session <= {args.session_margin:.0%}."
+          f" Reference self-noise floor: h_T {f.get('h_T', float('nan')):+.1%}, flips "
+          f"{f.get('change_T', float('nan')):.1%}.",
+          "\n| candidate proposes | states (tasks) | reference success | net harm (upper) | "
+          "session harm (upper) | detectable harm | verdict |",
+          "|---|---|---|---|---|---|---|"]  # fmt: skip
+    for k, t in card["by_proposed_slice"].items():
+        md.append(f"| {k} | {t['n_states']} ({t['n_tasks']}) | {t['p_T']:.0%} | "
+                  f"{t['harm']:+.1%} ({t['harm_upper']:.1%}) | {t['session_harm_upper']:.1%} | "
+                  f"{t['detectable_harm']:.1%} | {t['verdict']} |")  # fmt: skip
+    md.append(f"\nComposition: {card['composition']}. Requires {card['requires']}.")
+    md.append(f"\nCertified: {card['routing']['certified'] or 'none'}. "
+              f"Never route: {card['routing']['never'] or 'none'}.")  # fmt: skip
+    text = "\n".join(md) + "\n"
+    (out / "claim_b.md").write_text(text)
+    print(text)
+
+
+def outcomes(path: str, outcome: str) -> list[tuple[str, bool]]:
+    """{task_id, success} JSONL rows, or a tau2 results.json (infrastructure errors left out)."""
+    text = Path(path).read_text()
+    if text.lstrip().startswith("{") and '"simulations"' in text[:2000]:
+        out = []
+        for s in json.loads(text)["simulations"]:
+            if s.get("termination_reason") == "infrastructure_error":
+                continue
+            info = s.get("reward_info") or {}
+            ok = (bool((info.get("db_check") or {}).get("db_match")) if outcome == "db"
+                  else (info.get("reward") or 0) >= 1.0)  # fmt: skip
+            out.append((str(s["task_id"]), ok))
+        return out
+    rows = [json.loads(line) for line in text.splitlines() if line.strip()]
+    return [(str(r["task_id"]), bool(r["success"])) for r in rows if r.get("success") is not None]
+
+
+def compare_cmd(args: Any, out: Path) -> None:
+    """`graduate compare`: paired, task-clustered regret with its minimum detectable regret."""
+    from graduate.certify.session import compare, per_task
+
+    r = compare(per_task(outcomes(args.reference, args.outcome)),
+                per_task(outcomes(args.candidate, args.outcome)), margin=args.margin)  # fmt: skip
+    (out / "compare.json").write_text(json.dumps(r, indent=2))
+    if not r["tasks"]:
+        print("no paired tasks")
+        return
+    text = (f"# Session-level comparison: {r['tasks']} paired tasks\n\n"
+            f"Reference success {r['reference_success']:.1%}, candidate "
+            f"{r['candidate_success']:.1%}. Regret {r['regret']:+.1%} (one-sided 95% upper bound "
+            f"{r['regret_upper']:+.1%}; candidate worse on {r['tasks_worse']} tasks, better on "
+            f"{r['tasks_better']}). Smallest regret this evidence could detect: "
+            f"{r['detectable_regret']:.1%}.\n\n**{r['verdict']}** at a margin of "
+            f"{r['margin']:.0%}.\n")  # fmt: skip
+    (out / "compare.md").write_text(text)
+    print(text)
+
+
 CARD_LEGEND = """How to read the table: a slice is one kind of decision the candidate proposes
 (agent node / call type / tool / position bucket in the conversation). sess = conversations
 counted; calls = calls in the slice; rate = observed disagreement with the reference;
@@ -409,9 +481,35 @@ def main(argv: list[str] | None = None) -> None:
         help="count format-only argument differences (e.g. 'W1000' for '#W1000') as agreement; "
         "default: reported, not forgiven",
     )
+    b = sub.add_parser(
+        "claim-b",
+        help="certify by effect from fork outcomes (needs an environment that can be reset to a "
+        "logged state)",
+    )
+    b.add_argument("forks", help="comma-separated JSONL files of fork rows (T1, T2, S branches)")
+    b.add_argument("--session-margin", type=float, default=0.10, help="harm allowed per session")
+    b.add_argument(
+        "--cap", type=int, default=1, help="routed turns per session (delta = margin/cap)"
+    )
+    b.add_argument("--by-position", action="store_true", help="keep position buckets in slices")
+    b.add_argument("--serving", default="{}", help="JSON: the reference's serving configuration")
+    b.add_argument("--out", default="graduate-claim-b")
+    m = sub.add_parser("compare", help="session level: candidate vs reference on the same tasks")
+    m.add_argument("reference", help="JSONL of {task_id, success} rows (or a tau2 results.json)")
+    m.add_argument("candidate", help="the same for the candidate or the hybrid")
+    m.add_argument("--margin", type=float, default=0.10, help="allowed regret per session")
+    m.add_argument("--outcome", choices=["reward", "db"], default="reward",
+                   help="tau2 results: full reward or database end state")  # fmt: skip
+    m.add_argument("--out", default="graduate-compare")
     args = ap.parse_args(argv)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    if args.cmd == "claim-b":
+        claim_b(args, out)
+        return
+    if args.cmd == "compare":
+        compare_cmd(args, out)
+        return
     key = _key(args.api_key_env, "--api-key-env")
     ref_key = _key(args.reference_api_key_env, "--reference-api-key-env")
 
