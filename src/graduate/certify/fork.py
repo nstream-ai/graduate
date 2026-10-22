@@ -83,13 +83,14 @@ def _cluster_boot(diff, tasks, seed: int, n_boot: int = 5000):
 
 
 def states_needed(change_t: float, delta: float) -> int:
-    """Phase-B size per slice (amendment A1-revised): the exact zero-event bound, or the one-sided
-    normal bound under the null when the teacher's own flips add variance."""
+    """States needed per slice: n >= max(3 / delta, 2.7 * change_T / delta^2), the exact zero-event
+    bound, or the one-sided normal bound under the null when the reference's own flips (change_T)
+    add variance; those flips are variance, not bias."""
     return math.ceil(max(3 / delta, 2.7 * change_t / delta**2))
 
 
 def slice_stats(pairs: list[dict], delta: float = 0.05, level: float = 0.05, seed: int = 0) -> dict:
-    """Per-slice effect statistics for one group of paired states (amendment A1-revised).
+    """Per-slice effect statistics for one group of paired states.
 
     Primary: signed net harm h = mean(worse - better) of S against T1, one-sided task-clustered
     upper bound <= delta (delta_turn = session margin / router cap). The teacher's own flip rate
@@ -113,7 +114,7 @@ def slice_stats(pairs: list[dict], delta: float = 0.05, level: float = 0.05, see
     boot = _cluster_boot(t1 - s, tasks, seed)  # bootstrap of h
     boot_t = _cluster_boot(t1 - t2, tasks, seed + 1)  # bootstrap of h_T
     boot_upper = float(np.quantile(boot, 1 - level))
-    # exact, state-level (plan v2 §3): given the d = worse + better discordant states,
+    # exact, state-level: given the d = worse + better discordant states,
     # worse ~ Binomial(d, q) and h = (d / n)(2q - 1); a Clopper-Pearson upper bound on q bounds h
     d = worse + better
     exact_upper = (d / n) * (2 * clopper_pearson_upper(worse, d, level) - 1) if d else 0.0
@@ -147,7 +148,8 @@ def slice_stats(pairs: list[dict], delta: float = 0.05, level: float = 0.05, see
         "h_T": h_t,
         "h_T_ci95": h_t_ci,
         "h_T_se_clustered": h_t_se,
-        # §H3: a test, not a point comparison (one-sided 5% each way, tasks as clusters)
+        # validity of the reference noise floor: h_T (T2 against T1) must be within noise, tested
+        # one-sided 5% each way with tasks as clusters, not compared as a point
         "valid_h_T": abs(h_t) <= 1.645 * h_t_se if h_t_se > 0 else h_t == 0.0,
         "states_needed": need,
         "detectable_harm": detectable,
@@ -188,9 +190,11 @@ def fork_card(
         for k, ok in zip(names, bh, strict=True):
             t = table[k]
             t["p_T"] = t["pass_T1"]
-            # §H1: "no worse than a teacher who rarely succeeds" is true of anything
+            # non-vacuity: a slice is eligible only where the reference itself succeeds >= 2 delta;
+            # "no worse than a reference that rarely succeeds" is true of anything
             t["eligible"] = t["p_T"] >= 2 * delta
-            # §H2: harm far beyond the teacher's own success: the router refuses the slice
+            # never route: harm is likely (h > 0) and could exceed half the reference's own success
+            # (upper bound > p_T / 2): the router refuses the slice
             t["never_route"] = t["harm_upper"] > t["p_T"] / 2 and t["harm"] > 0
             t["certified"] = (
                 bool(ok)
@@ -215,9 +219,21 @@ def fork_card(
     if card["all"]:  # the reference's own effect-level noise: the floor of every claim here
         card["reference_floor"] = {k: card["all"][k] for k in ("h_T", "h_T_ci95", "change_T")}
     card["serving"] = serving or {}
+    # the largest router cap for which the per-turn evidence still supports the session margin by
+    # the union bound: floor(margin / pooled per-turn upper bound); beyond it the session claim
+    # derived from per-turn evidence is not informative
+    turn_upper = card["all"]["harm_upper"] if card["all"] else None
+    card["cap_max_informative"] = (
+        None if turn_upper is None
+        else math.floor(session_margin / turn_upper) if turn_upper > 0
+        else None  # no harm bound above zero: no limit from this evidence
+    )  # fmt: skip
+    limit = card["cap_max_informative"]
     card["composition"] = (
         f"union bound over <= {cap} routed turns per session (session harm <= cap x per-turn "
-        "bound); a dependence-aware composition is research, not used here"
+        "bound); with this per-turn bound the session claim is informative up to cap "
+        f"{limit if limit is not None else 'unbounded'}; a dependence-aware composition is "
+        "research, not used here"
     )
     card["requires"] = "an environment that can be reset to a logged state (replayable forks)"
     return card
@@ -238,7 +254,7 @@ def routing_table(card: dict) -> dict:
     return {
         "tau": {k: 0.0 for k in cert},
         "certified": cert,
-        "never": never,  # §H2: refused regardless of confidence
+        "never": never,  # never-route slices: refused regardless of confidence
         "nodes": {},
         "measure": "mean",
         "source": "fork_compare",

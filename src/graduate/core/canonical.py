@@ -5,7 +5,7 @@ text turn. Arguments are normalized conservatively: keys sorted, surrounding whi
 from strings, integral floats equal to ints. Nothing semantic (dates, units, synonyms) is
 normalized here; that is the job of a per-slice equivalence plugin.
 
-Agreement levels, from weakest to strongest (design §9.1, L1):
+Agreement levels, from weakest to strongest:
   decision  tool call vs text
   tools     the same multiset of tool names
   args      the same multiset of (name, normalized arguments)

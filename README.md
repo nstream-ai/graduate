@@ -134,8 +134,10 @@ For each slice of the candidate's proposals, the card reports:
 
 **Two labels on every card:**
 - *Composition:* the per-session bound is the union bound over at most `cap` routed turns
-  (session harm ≤ cap × per-turn bound). A dependence-aware composition is research, not used
-  here.
+  (session harm ≤ cap × per-turn bound). The card also reports `cap_max_informative`, the
+  largest cap for which your per-turn bound still supports the session margin: for example, a
+  per-turn bound of 4 points and a 10-point margin give 2. A dependence-aware composition is
+  research, not used here.
 - *Requires:* an environment that can be reset to a logged state. Without one, use
   `graduate certify` (agreement) and `graduate compare` (whole sessions).
 

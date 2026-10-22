@@ -17,6 +17,10 @@ Certification by effect and session-level comparison: the methods the paper uses
   on the same tasks, with its bound and the smallest detectable regret; reads JSONL or τ²-bench
   results.
 - `graduate certify`: per-slice smallest detectable margin in `card.json` and `card.md`.
+- `claim-b` cards report `cap_max_informative`: the largest router cap for which the per-turn
+  bound still supports the session margin under the union bound.
+- Prompting and tool-call parsing move from `graduate.train` to `graduate.prompting`; the package
+  contains no training code.
 
 ## [0.1.3] - 2026-10-22
 

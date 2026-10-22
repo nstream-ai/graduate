@@ -63,3 +63,19 @@ def test_claim_b_cli(tmp_path: Path) -> None:
     assert card["routing"]["certified"] == ["retail/tool/get_order"]  # positions pooled
     text = (out / "claim_b.md").read_text()
     assert "detectable harm" in text and "union bound" in text and "reset to a logged state" in text
+
+
+def test_cap_max_informative_is_the_margin_over_the_per_turn_bound():
+    import math
+
+    from graduate.certify.fork import fork_card
+
+    pairs = [
+        {"state": str(i), "task_id": f"t{i % 40}", "slice": "a", "proposed_slice": "a",
+         "T1": i % 2 == 0, "T2": i % 2 == 0, "S": i % 2 == 0 if i % 25 else i % 2 == 1}
+        for i in range(400)
+    ]  # fmt: skip
+    card = fork_card(pairs, session_margin=0.10, cap=1)
+    upper = card["all"]["harm_upper"]
+    assert card["cap_max_informative"] == math.floor(0.10 / upper)
+    assert f"informative up to cap {card['cap_max_informative']}" in card["composition"]

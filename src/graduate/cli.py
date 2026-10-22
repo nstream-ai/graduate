@@ -47,8 +47,8 @@ from graduate.certify.causes import (
 from graduate.core import ToolCall, action_of, agree, is_valid, routing_slice
 from graduate.core.slicing import action_type_and_tool
 from graduate.ingest import PRESETS, ingest
-from graduate.train.data import to_chat, tools_spec
-from graduate.train.decode import parse_completion
+from graduate.prompting.chat import to_chat, tools_spec
+from graduate.prompting.decode import parse_completion
 
 
 def openai_messages(chat: list[dict[str, Any]]) -> list[dict[str, Any]]:

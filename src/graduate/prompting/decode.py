@@ -66,7 +66,7 @@ def _xml_call(raw: str, schemas: dict[str, dict[str, Any]]) -> ToolCall:
 
 
 def _gemma_calls(body: str) -> tuple[str, list[ToolCall]]:
-    from graduate.train import gemma
+    from graduate.prompting import gemma
 
     calls = []
     for name, args in gemma.CALL.findall(body):
@@ -86,7 +86,7 @@ def parse_completion(text: str, tools: Any = None) -> tuple[str, list[ToolCall]]
     Qwen3.5 XML), Gemma 4 `<|tool_call>call:name{...}<tool_call|>`, or a bare JSON call. `tools`
     (the turn's tool schemas) types XML parameter values."""
     if "<|tool_call>" in text or "<|channel>" in text:
-        from graduate.train.gemma import strip_thoughts
+        from graduate.prompting.gemma import strip_thoughts
 
         return _gemma_calls(strip_thoughts(text))
     body = THINK.sub("", text).strip()
