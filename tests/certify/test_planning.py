@@ -13,7 +13,7 @@ def test_rule_of_three_regime():
 
 
 def test_exact_needs_more_than_the_normal_approximation():
-    # Design §13.7 normal approximation said ~240 for alpha=3%, true 1%, 80% power.
+    # A normal approximation says ~240 for alpha=3%, true 1%, 80% power.
     # The exact test first touches 80% at n=303 but only stays there from n=392.
     assert accepted_samples_needed(0.01, 0.03) == 392
 

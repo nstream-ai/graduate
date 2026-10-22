@@ -1,6 +1,6 @@
 [project]
 name = "graduate"
-version = "0.1.3"
+version = "0.2.0"
 description = "Find out which of your agent's calls a cheaper model can take over, with a statistical certificate per slice of traffic."
 readme = "README.md"
 license = "Apache-2.0"

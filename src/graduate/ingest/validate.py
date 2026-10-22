@@ -1,5 +1,5 @@
 """Ingest report: what came in, what was repaired, what is missing. Printed after every ingest
-so data problems are visible before training (design §8: '8,412 of 12,000 traces usable')."""
+so data problems are visible before anything is scored (e.g. '8,412 of 12,000 traces usable')."""
 
 from __future__ import annotations
 

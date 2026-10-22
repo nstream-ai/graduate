@@ -88,7 +88,7 @@ says roughly how many more conversations it would need.
 | `swe-rebench` | SWE-rebench OpenHands trajectories |
 | `tau2` | τ²-bench simulation results; add the agent's system prompt and tool definitions to each simulation (`system`, `tools`) when you export them |
 
-## What v0.1 certifies
+## What it certifies
 
 **Agreement with your reference model, per slice**: the candidate's action matches the
 reference's on at least 1 − alpha of the slice's calls, with 1 − delta confidence. And,
@@ -99,16 +99,61 @@ candidate can certify that slice by agreement**. That is a property of your refe
 candidate. Tool slices of real agents often look like this: we measured 5–17% self-disagreement
 for one widely used API model on τ²-bench tool calls, against a 5% gate.
 
-**Not in v0.1:**
-- outcome-based (fork) certification, which compares task outcomes after the candidate answers
-  one turn and the reference finishes;
-- the never-route list.
-
 **Default protocol:** cap 1 (one call per conversation and slice), the anytime-valid betting test
 of H0: disagreement ≥ alpha, Benjamini–Hochberg across slices, alpha = 5%, delta = 5%. As a rule
 of thumb at these defaults, a single slice needs about 70 conversations if the candidate never
 disagrees with the reference, about 120 at a true 1% disagreement rate and about 270 at 2%, and
 more when many slices are tested at once.
+
+## Certify by effect: `graduate claim-b`
+
+Agreement with the reference is a proxy. When your environment can be **reset to a logged state**
+(a simulator, a sandbox, or a replay of your tools), you can test the outcome instead. Fork each
+sampled conversation at a turn, and run three branches from that exact state:
+
+- **T1, T2:** the reference answers the turn and finishes the conversation (twice, to measure its
+  own noise);
+- **S:** the candidate answers that one turn, and the reference finishes.
+
+Write one JSON line per branch:
+`{"state", "task_id", "slice", "branch": "T1"|"T2"|"S", "success": true|false, "termination"}`
+(plus `proposed_slice`, the candidate's own action, when it differs from the logged one). Then:
+
+    graduate claim-b forks.jsonl --session-margin 0.10 --cap 1 --out claim-b/
+
+For each slice of the candidate's proposals, the card reports:
+- the **signed net harm**: sessions the candidate's turn made worse minus sessions it made
+  better, per routed turn, with a one-sided upper bound (the stricter of a task-clustered
+  bootstrap and an exact bound);
+- **never route**: harm is likely and could be large, so the router always sends it to the
+  reference;
+- **vacuous**: the reference itself rarely succeeds there, so "no harm" means nothing;
+- the **smallest harm this evidence could detect**: "cannot be decided with this evidence" is
+  not a failure;
+- the **reference's noise floor**: how often T1 and T2 end differently.
+
+**Two labels on every card:**
+- *Composition:* the per-session bound is the union bound over at most `cap` routed turns
+  (session harm ≤ cap × per-turn bound). The card also reports `cap_max_informative`, the
+  largest cap for which your per-turn bound still supports the session margin: for example, a
+  per-turn bound of 4 points and a 10-point margin give 2. A dependence-aware composition is
+  research, not used here.
+- *Requires:* an environment that can be reset to a logged state. Without one, use
+  `graduate certify` (agreement) and `graduate compare` (whole sessions).
+
+## Compare whole sessions: `graduate compare`
+
+Run the reference and the candidate (or a hybrid router) on the same tasks, then:
+
+    graduate compare reference.jsonl candidate.jsonl --margin 0.10 --out compare/
+
+Input: `{"task_id", "success"}` lines, or τ²-bench `results.json` files (`--outcome db` for the
+database end state, `reward` for the full reward; infrastructure errors are left out). The report
+gives the paired regret (reference success − candidate success), with a one-sided 95% upper bound
+from the stricter of a task-clustered bootstrap and an exact test, and the smallest regret the
+evidence could detect. The verdict is "non-inferior", "not non-inferior", or "cannot be decided
+with this evidence" when the task count is too small for the margin (a few dozen tasks rarely
+resolve 10 points).
 
 ## How the certificate works
 
@@ -129,8 +174,7 @@ more when many slices are tested at once.
   replies separately, or measure outcomes.
 - **Outcomes.** Agreement with the reference is a proxy. Where an environment can be replayed, the
   stronger claim is *by effect*: fork the conversation, let the candidate answer one turn, let the
-  reference finish, and compare task outcomes. Our τ²-bench experiments use this (see the
-  website); it is not in the CLI yet.
+  reference finish, and compare task outcomes. `graduate claim-b` does this (below).
 
 ## Using a judge
 

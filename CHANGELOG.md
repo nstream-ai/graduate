@@ -3,6 +3,25 @@
 All notable changes to this project are listed here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-10-22
+
+Certification by effect and session-level comparison: the methods the paper uses.
+
+- `graduate claim-b`: certify slices by outcome from forked conversations (the candidate answers
+  one turn, the reference finishes). Signed net harm with the stricter of a task-clustered
+  bootstrap and an exact bound, multiplicity control across slices, the reference's noise floor,
+  "never route" and "vacuous" verdicts, and the smallest harm the evidence could detect. Every card
+  states its composition (union bound over the routed turns per session) and its requirement (an
+  environment that can be reset to a logged state).
+- `graduate compare`: paired session-level regret of a candidate or hybrid against the reference
+  on the same tasks, with its bound and the smallest detectable regret; reads JSONL or τ²-bench
+  results.
+- `graduate certify`: per-slice smallest detectable margin in `card.json` and `card.md`.
+- `claim-b` cards report `cap_max_informative`: the largest router cap for which the per-turn
+  bound still supports the session margin under the union bound.
+- Prompting and tool-call parsing move from `graduate.train` to `graduate.prompting`; the package
+  contains no training code.
+
 ## [0.1.3] - 2026-10-22
 
 - README: share `card.md` (example values redacted) when reporting, not `card.json`, which keeps
@@ -60,6 +79,7 @@ First public release.
 - Trace ingest with presets for OpenAI chat, Hermes, Toucan, Nemotron, SWE-rebench and τ²-bench.
 - Session-level time-ordered splits, deduplication and slicing.
 
+[0.2.0]: https://github.com/nstream-ai/graduate/releases/tag/v0.2.0
 [0.1.3]: https://github.com/nstream-ai/graduate/releases/tag/v0.1.3
 [0.1.2]: https://github.com/nstream-ai/graduate/releases/tag/v0.1.2
 [0.1.1]: https://github.com/nstream-ai/graduate/releases/tag/v0.1.1
