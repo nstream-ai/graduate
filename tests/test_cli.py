@@ -122,13 +122,15 @@ def test_certify_end_to_end(tmp_path: Path) -> None:
     assert card["reference_calls"] == 400 and card["failed_requests"] == 0
     # the tool call always matches (200 sessions, zero disagreements): certified
     assert any("get_order" in s for s in card["certified_slices"])
-    # replies agree by decision only (reply vs act); their wording is not compared
-    assert any("text" in s for s in card["certified_slices"])
+    # replies agree by decision only (reply vs act); their wording is not compared, so text slices
+    # are "decision only" and stay out of the certified share unless --certify-text-slices
+    assert not any("text" in s for s in card["certified_slices"])
     assert card["decision_split"]["replied_instead_of_acting"] == 0.0
-    assert card["certified_call_share"] == 1.0
+    assert 0.0 < card["certified_call_share"] < 1.0
     assert "not compared" in (out / "card.md").read_text()
     verdicts = {r["slice"]: r["verdict"] for r in card["slices"]}
-    assert all(v == "certified" for v in verdicts.values())
+    assert all(v == ("decision only (wording unchecked)" if "text" in k else "certified")
+               for k, v in verdicts.items())  # fmt: skip
     assert all(abs(r["detectable_margin"] - 3 / r["sessions"]) < 1e-12 for r in card["slices"])
     assert (out / "card.md").exists() and (out / "proposals.jsonl").exists()
 
@@ -388,3 +390,29 @@ def test_contract_line_says_not_checked_without_a_tool_list():
 
     line = contract_line({"conversations_checked": 0, "admissible": True, "checked": False})
     assert "not checked" in line
+
+
+def test_text_slices_certify_only_on_request(tmp_path: Path) -> None:
+    traces = tmp_path / "traces.jsonl"
+    traces.write_text("\n".join(json.dumps(_trace(i)) for i in range(200)))
+    server, url = _serve()
+    try:
+        _run(traces, tmp_path / "r", url, "fake", "--certify-text-slices")
+    finally:
+        server.shutdown()
+    card = json.loads((tmp_path / "r" / "card.json").read_text())
+    assert any("text" in s for s in card["certified_slices"])
+    assert card["certified_call_share"] == 1.0
+
+
+def test_noisy_reference_slices_are_held_and_stay_visible() -> None:
+    from types import SimpleNamespace
+
+    from graduate.cli import slice_verdicts
+
+    r = SimpleNamespace(slice="agent0/tool/get_order/1", sessions=50, calls=50, rate=0.0,
+                        upper=0.06, binding="disagree", certified=False, above_alpha=False,
+                        plan=None)  # fmt: skip
+    card = SimpleNamespace(slices=[r], alphas={"disagree": 0.05})
+    out = slice_verdicts(card, 0.05, noisy={r.slice})
+    assert out[0]["verdict"].startswith("held: reference noise")

@@ -76,6 +76,16 @@ def test_cap_max_informative_is_the_margin_over_the_per_turn_bound():
         for i in range(400)
     ]  # fmt: skip
     card = fork_card(pairs, session_margin=0.10, cap=1)
-    upper = card["all"]["harm_upper"]
+    # 40 tasks with some harm: nothing certifies, so no cap is informative
+    assert not card["by_proposed_slice"]["a"]["certified"]
+    assert card["cap_max_informative"] is None and "no certified slice" in card["composition"]
+    clean = [
+        {"state": str(i), "task_id": f"t{i}", "slice": "b", "proposed_slice": "b",
+         "T1": True, "T2": True, "S": True}
+        for i in range(200)
+    ]  # fmt: skip
+    card = fork_card(pairs + clean, session_margin=0.10, cap=1)
+    upper = card["by_proposed_slice"]["b"]["harm_upper"]  # from the certified slice only
+    assert card["by_proposed_slice"]["b"]["certified"]
     assert card["cap_max_informative"] == math.floor(0.10 / upper)
     assert f"informative up to cap {card['cap_max_informative']}" in card["composition"]

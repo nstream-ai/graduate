@@ -13,6 +13,13 @@ states, was not valid: the conditional bound treats the discordance rate as know
 point estimate when the candidate is never better, and returns 0 when no task differs. At a
 one-sided null it falsely certified 14–20% of slices at 30–60 states. It is replaced:
 
+- `graduate certify`: text-reply slices read "decision only (wording unchecked)" and stay out of
+  the certified share (their agreement is on the decision, not the wording);
+  `--certify-text-slices` counts them. Slices where the reference disagrees with itself at or
+  above alpha (`--reference-base-url`) stay on the card as "held: reference noise" instead of
+  disappearing.
+- `claim-b`: `cap_max_informative` comes from certified slices only (an uncertified slice is not
+  routed); with no certified slice it is "not defined".
 - `claim-b` and `compare` certify with a **finite-sample, task-level betting bound** on the
   per-task mean difference (magnitudes, not signs; `graduate.certify.stats.taskbounds`). In a
   120-cell simulation at one-sided nulls, with within-task correlation from 0 to 1, its worst

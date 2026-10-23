@@ -240,7 +240,9 @@ def fork_card(
     # the largest router cap for which the per-turn evidence still supports the session margin by
     # the union bound: floor(margin / pooled per-turn upper bound); beyond it the session claim
     # derived from per-turn evidence is not informative
-    turn_upper = card["all"]["harm_upper"] if card["all"] else None
+    # from certified slices only: an uncertified slice is not routed, so it adds no session harm
+    certified = [t["harm_upper"] for t in card["by_proposed_slice"].values() if t["certified"]]
+    turn_upper = max(certified) if certified else None
     card["cap_max_informative"] = (
         None if turn_upper is None
         else math.floor(session_margin / turn_upper) if turn_upper > 0
@@ -250,7 +252,8 @@ def fork_card(
     card["composition"] = (
         f"union bound over <= {cap} routed turns per session (session harm <= cap x per-turn "
         "bound); with this per-turn bound the session claim is informative up to cap "
-        f"{limit if limit is not None else 'unbounded'}; a dependence-aware composition is "
+        f"{limit if limit is not None else 'not defined (no certified slice)'}; a "
+        "dependence-aware composition is "
         "research, not used here"
     )
     card["requires"] = "an environment that can be reset to a logged state (replayable forks)"

@@ -234,6 +234,7 @@ def certify(
     noisy: set[str] | None = None,
     normalise_args: bool = False,
     contract: dict[str, Any] | None = None,
+    certify_text: bool = False,
 ) -> tuple[Any, dict[str, Any], dict[str, Any]]:
     keys, sess, gates = [], [], {"disagree": [], "invalid": []}
     split = Counter()
@@ -263,10 +264,19 @@ def certify(
         split["reference_replies"] += rk == "text"
         split["replied_instead_of_acting"] += rk != "text" and ck == "text"
         split["acted_instead_of_replying"] += rk == "text" and ck != "text"
-    accepted = [k not in (noisy or set()) for k in keys]
+    accepted = [True] * len(keys)  # noisy slices stay visible; they are held, not dropped
     card = report_card(
         keys, sess, gates=gates, alpha=alpha, delta=delta, cap=cap, accepted=accepted
     )
+    if not certify_text:  # a text reply agrees on the decision only: its wording is unchecked
+        kept = [dataclasses.replace(r, certified=False) if is_text_slice(r.slice) else r
+                for r in card.slices]  # fmt: skip
+        card = dataclasses.replace(
+            card,
+            slices=kept,
+            certified_call_share=sum(r.call_share for r in kept if r.certified),
+            certified_token_share=sum(r.token_share for r in kept if r.certified),
+        )
     decision = {
         "replied_instead_of_acting": split["replied_instead_of_acting"]
         / max(1, split["reference_acts"]),
@@ -280,6 +290,15 @@ def certify(
         "admissible": True,
         "checked": False,
     }
+    if noisy:  # held: a slice where the reference disagrees with itself is never certified
+        held = [dataclasses.replace(r, certified=False) if r.slice in noisy else r
+                for r in card.slices]  # fmt: skip
+        card = dataclasses.replace(
+            card,
+            slices=held,
+            certified_call_share=sum(r.call_share for r in held if r.certified),
+            certified_token_share=sum(r.token_share for r in held if r.certified),
+        )
     if not decision["reference_contract"][
         "admissible"
     ]:  # no swap is certified against a reference that breaks its contract
@@ -292,8 +311,17 @@ def certify(
     return card, decision, why
 
 
+def is_text_slice(key: str) -> bool:
+    """A slice of text replies: agreement is on the decision (reply, not act), not the wording."""
+    return "/text/" in key or key.endswith("/text")
+
+
 def slice_verdicts(
-    card: Any, alpha: float, why: dict[str, Any] | None = None, calibration: dict | None = None
+    card: Any,
+    alpha: float,
+    why: dict[str, Any] | None = None,
+    calibration: dict | None = None,
+    noisy: set[str] | None = None,
 ) -> list[dict]:
     """Per slice: the verdict and the smallest disagreement margin this evidence can resolve
     (zero-event bound, about 3 / n sessions). A slice whose disagreement is significantly at or
@@ -305,8 +333,12 @@ def slice_verdicts(
     for r in card.slices:
         detectable = 3 / r.sessions if r.sessions else 1.0
         a = card.alphas[r.binding]
-        if r.certified:
+        if r.slice in (noisy or set()):  # the reference disagrees with itself at or above alpha
+            verdict = "held: reference noise (cannot be certified by agreement)"
+        elif r.certified:
             verdict = "certified"
+        elif is_text_slice(r.slice):
+            verdict = "decision only (wording unchecked)"
         elif r.above_alpha:
             verdict = (
                 f"not certified: disagreement {r.rate:.0%} is significantly above alpha {a:g}; "
@@ -606,6 +638,11 @@ def main(argv: list[str] | None = None) -> None:
     c.add_argument("--limit", type=int, default=None, help="first N conversations only")
     c.add_argument("--concurrency", type=int, default=8, help="parallel requests")
     c.add_argument(
+        "--certify-text-slices",
+        action="store_true",
+        help="count text-reply slices as certifiable (their wording is not checked)",
+    )
+    c.add_argument(
         "--reference-base-url",
         default=None,
         help="re-ask the reference here to measure its own noise (optional)",
@@ -783,6 +820,7 @@ def main(argv: list[str] | None = None) -> None:
         noisy,
         args.normalise_args,
         getattr(states, "contract", None),
+        args.certify_text_slices,
     )
     card, calibration = plan_history(card, out / "planner.json", fresh=args.fresh)
     report = {
@@ -796,7 +834,7 @@ def main(argv: list[str] | None = None) -> None:
         "cap": args.cap,
         "certified_call_share": card.certified_call_share,
         "certified_slices": [r.slice for r in card.slices if r.certified],
-        "slices": slice_verdicts(card, args.alpha, why, calibration),
+        "slices": slice_verdicts(card, args.alpha, why, calibration, noisy),
         "normaliser": {"version": NORMALISER_VERSION, "rule": NORMALISER},
         "format_only_counted_as_agreement": decision["forgiven_format_only"],
         "reference_contract": decision["reference_contract"],
