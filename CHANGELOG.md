@@ -8,14 +8,21 @@ All notable changes to this project are listed here. Versions follow
 Certification by effect and session-level comparison: the methods the paper uses.
 
 - `graduate claim-b`: certify slices by outcome from forked conversations (the candidate answers
-  one turn, the reference finishes). Signed net harm with the stricter of a task-clustered
-  bootstrap and an exact bound, multiplicity control across slices, the reference's noise floor,
+  one turn, the reference finishes). Task-weighted signed net harm with a finite-sample
+  task-level betting bound (the task-cluster t bound and the bootstrap are printed), e-BH across
+  slices, the reference's noise floor,
   "never route" and "vacuous" verdicts, and the smallest harm the evidence could detect. Every card
   states its composition (union bound over the routed turns per session) and its requirement (an
   environment that can be reset to a logged state).
 - `graduate compare`: paired session-level regret of a candidate or hybrid against the reference
-  on the same tasks, with its bound and the smallest detectable regret; reads JSONL or τ²-bench
+  on the same tasks, with the same finite-sample task-level bound ("supported (asymptotic only)"
+  when only the t bound passes, shown with at least 100 tasks or 2 trials per task), the smallest
+  detectable regret, and "cannot be decided" below 3 / margin tasks; reads JSONL or τ²-bench
   results.
+- Task-level bounds replace the earlier bound conditional on the discordant pairs, which could
+  certify falsely at a one-sided null. A simulation grid at one-sided nulls (120 cells) found the
+  finite-sample bound within its level everywhere; the t bound was not, on forks, so fork cards
+  never report "supported (asymptotic only)".
 - `graduate certify`: a `detect` column, the smallest disagreement rate the slice's conversations
   can rule out. A slice whose disagreement is significantly above alpha (its one-sided lower
   bound reaches alpha) is "not certified" and says more conversations will not help; every other

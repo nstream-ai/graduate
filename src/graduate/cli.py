@@ -456,12 +456,13 @@ def claim_b(args: Any, out: Path) -> None:
           f" Reference self-noise floor: h_T {f.get('h_T', float('nan')):+.1%}, flips "
           f"{f.get('change_T', float('nan')):.1%}.",
           "\n| candidate proposes | states (tasks) | reference success | net harm (upper) | "
-          "bootstrap / exact (binding) | session harm (upper) | detectable harm | verdict |",
+          "finite-sample / t / bootstrap | session harm (upper) | detectable harm | verdict |",
           "|---|---|---|---|---|---|---|---|"]  # fmt: skip
     for k, t in card["by_proposed_slice"].items():
         md.append(f"| {k} | {t['n_states']} ({t['n_tasks']}) | {t['p_T']:.0%} | "
-                  f"{t['harm']:+.1%} ({t['harm_upper']:.1%}) | {t['harm_upper_bootstrap']:.1%} / "
-                  f"{t['harm_upper_exact']:.1%} ({t['binding']}) | {t['session_harm_upper']:.1%} | "
+                  f"{t['harm_task']:+.1%} ({t['harm_upper']:.1%}; states {t['harm']:+.1%}) | "
+                  f"{t['harm_upper_finite']:.1%} / {t['harm_upper_t']:.1%} / "
+                  f"{t['harm_upper_bootstrap']:.1%} | {t['session_harm_upper']:.1%} | "
                   f"{t['detectable_harm']:.1%} | {t['verdict']} |")  # fmt: skip
     md.append(f"\nComposition: {card['composition']}. Requires {card['requires']}.")
     md.append(f"\nCertified: {card['routing']['certified'] or 'none'}. "
@@ -503,8 +504,9 @@ def compare_cmd(args: Any, out: Path) -> None:
             f"{r['candidate_success']:.1%}. Regret {r['regret']:+.1%} (one-sided 95% upper bound "
             f"{r['regret_upper']:+.1%}; candidate worse on {r['tasks_worse']} tasks, better on "
             f"{r['tasks_better']}). Smallest regret this evidence could detect: "
-            f"{r['detectable_regret']:.1%}. Bounds: bootstrap {r['regret_upper_bootstrap']:+.1%}, "
-            f"exact {r['regret_upper_exact']:+.1%} ({r['binding']} binds). Non-vacuity: the "
+            f"{r['detectable_regret']:.1%}. Bounds: finite-sample {r['regret_upper_finite']:+.1%} "
+            f"(decides), t {r['regret_upper_t']:+.1%} (asymptotic), bootstrap "
+            f"{r['regret_upper_bootstrap']:+.1%}. Non-vacuity: the "
             f"reference succeeds {r['reference_success']:.0%} "
             f"({'at least' if r['non_vacuous'] else 'below'} 2 x margin).\n\n**{r['verdict']}** "
             f"at a margin of {r['margin']:.0%}.\n")  # fmt: skip
