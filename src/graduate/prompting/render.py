@@ -35,14 +35,19 @@ def render_prompt(
     tools: list[dict[str, Any]],
     tokenizer: Any,
     thinking: bool = False,
+    reasoning_effort: str | None = None,
 ) -> str:
-    """The prompt alone, as in training (for live serving, where there is no target yet)."""
+    """The prompt alone, as in training (for live serving, where there is no target yet).
+    `reasoning_effort` ("low" / "medium" / "high") is read by the gpt-oss chat template (its
+    default is "medium"); it is passed only when given, so other templates render as before."""
+    extra = {"reasoning_effort": reasoning_effort} if reasoning_effort else {}
     return tokenizer.apply_chat_template(
         messages,
         tools=tools or None,
         tokenize=False,
         add_generation_prompt=True,
         enable_thinking=thinking,
+        **extra,
     )
 
 
