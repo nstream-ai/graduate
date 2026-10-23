@@ -9,6 +9,11 @@ trials, are the unit: repeating trials narrows the interval little when tasks bi
 The minimum detectable regret is the smallest true regret this many tasks could detect at
 one-sided 5% with 80% power, (1.645 + 0.84) * SE, with SE from the per-task differences (and at
 least 3 / n): a comparison whose margin is below it "cannot be decided with this evidence".
+
+Non-vacuity: "no worse than a reference that rarely succeeds" is true of anything. A comparison is
+eligible only when the reference succeeds on at least 2 x margin of the tasks; otherwise the
+verdict is "vacuous". Run `compare` per domain as well as pooled. Both bounds are returned and the
+binding one (the larger, which certifies) is named.
 """
 
 from __future__ import annotations
@@ -58,16 +63,21 @@ def compare(
     else:
         up_exact = (disc / n) * (2 * float(beta.ppf(1 - level, worse + 1, disc - worse)) - 1)
     upper = max(up_boot, up_exact)
+    binding = "bootstrap" if up_boot >= up_exact else "exact"
     sd = math.sqrt(sum((x - mean) ** 2 for x in d) / (n - 1)) if n > 1 else 1.0
     detectable = max(3 / n, Z_POWER * sd / math.sqrt(n))
+    p_ref = sum(sum(reference[t]) / len(reference[t]) for t in ids) / n
+    non_vacuous = p_ref >= 2 * margin
     verdict = (
-        "non-inferior" if upper <= margin
+        f"vacuous (reference succeeds {p_ref:.0%} < 2 x margin)" if not non_vacuous
+        else "non-inferior" if upper <= margin
         else "cannot be decided with this evidence" if detectable > margin
         else "not non-inferior"
     )  # fmt: skip
     return {
         "tasks": n, "margin": margin, "regret": mean, "regret_upper": upper,
-        "regret_upper_bootstrap": up_boot, "regret_upper_exact": up_exact,
+        "regret_upper_bootstrap": up_boot, "regret_upper_exact": up_exact, "binding": binding,
+        "non_vacuous": non_vacuous,
         "tasks_worse": worse, "tasks_better": better, "detectable_regret": detectable,
         "reference_success": sum(sum(reference[t]) / len(reference[t]) for t in ids) / n,
         "candidate_success": sum(sum(candidate[t]) / len(candidate[t]) for t in ids) / n,

@@ -25,9 +25,9 @@ from numpy.typing import ArrayLike, NDArray
 
 from graduate.certify.stats import (
     benjamini_hochberg,
+    betting_mean_test,
     betting_risk_test,
     bonferroni,
-    clopper_pearson_interval,
     holm,
     ratio_upper_bound,
     session_counts,
@@ -91,6 +91,8 @@ def slice_plan(counts: tuple, gate: GateResult, cap: int, delta: float, m: int) 
     high = more_sessions_needed(e, a, gate.alpha, cap, delta / max(1, m))
     return {"at_sessions": int(e.size), "rate": gate.rate, "low": low, "high": high,
             "criterion": f"{PLAN_POWER:.0%} of simulated futures pass",
+            # not a certificate: conditioned on the slice's own conversations, which just failed
+            "basis": "resampled from this slice's own conversations",
             "near_margin": near_margin(gate.rate, gate.alpha, int(a.sum()))}  # fmt: skip
 
 
@@ -100,18 +102,27 @@ def plan_text(plan: dict) -> str:
 
     lo, hi = plan["low"], plan["high"]
     span = f"at least {n(lo)}" + (f", up to {n(hi)}" if hi != lo else "")
-    text = f"not enough evidence: {span} more conversations ({plan['criterion']})"
+    text = (
+        f"not enough evidence: {span} more conversations ({plan['criterion']}, estimated from "
+        "this slice's own conversations)"
+    )
     return text + ("; " + NEAR_MARGIN if plan.get("near_margin") else "")
 
 
-def above_gate(rate: float, population: int, alpha: float, delta: float) -> bool:
-    """The disagreement rate is significantly at or above alpha: the one-sided 1 - delta lower
-    Clopper-Pearson bound reaches alpha. Only then can more conversations not help; an observed
-    rate above alpha on a thin slice (1 of 5) is still undecided."""
-    if population <= 0:
+def above_gate(
+    errors: ArrayLike, accepted: ArrayLike, alpha: float, cap: int, delta: float
+) -> bool:
+    """The disagreement rate is significantly above alpha: the card's own betting test mirrored
+    (H0: rate <= alpha) on the same per-session capped counts rejects at delta. Sessions, not
+    calls, are the unit, so one long bad session cannot make a thin slice look hopeless; and the
+    test is anytime-valid, so it may be read at every look without inflation."""
+    e = np.asarray(errors, dtype=np.float64)
+    a = np.asarray(accepted, dtype=np.float64)
+    if not e.size:
         return False
-    errors = round(rate * population)
-    return clopper_pearson_interval(errors, population, 1 - 2 * delta)[0] >= alpha
+    test = betting_mean_test(alpha * a - e, alpha * cap, MIXTURE,
+                             prior_mean=-alpha / 2.0, prior_var=alpha)  # fmt: skip
+    return test.pvalue <= delta
 
 
 def near_margin(rate: float, alpha: float, population: int) -> bool:
@@ -151,6 +162,9 @@ class SliceResult:
     # add, "low" at the uncorrected level delta (the most BH can give one slice) and "high" at
     # delta / m (the BH worst case), each where PLAN_POWER of simulated futures pass
     plan: dict | None = None
+    # the binding gate's disagreement is significantly above alpha (mirrored betting test):
+    # more conversations will not help
+    above_alpha: bool = False
 
     @property
     def rate(self) -> float:
@@ -191,7 +205,7 @@ class ReportCard:
                 verdict += f"  [{plan_text(r.plan)}]"
             elif not r.certified and r.rate >= self.alphas[r.binding]:
                 a = self.alphas[r.binding]
-                if above_gate(r.rate, r.certified_population, a, self.delta):
+                if r.above_alpha:
                     verdict += (
                         f"  [disagreement {r.rate:.0%} is significantly above alpha {a:g}: "
                         "more conversations will not help]"
@@ -343,6 +357,7 @@ def report_card(
                 if plan and not ok
                 else None
             ),
+            above_alpha=(not ok) and above_gate(*counts[binding], results[binding].alpha, k, delta),
         )
         for (name, idx, routed, k, n_sessions, population, results, binding, counts), ok in zip(
             pre, passed, strict=True

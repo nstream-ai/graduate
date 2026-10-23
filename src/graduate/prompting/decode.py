@@ -89,7 +89,12 @@ def parse_completion(text: str, tools: Any = None) -> tuple[str, list[ToolCall]]
         from graduate.prompting.gemma import strip_thoughts
 
         return _gemma_calls(strip_thoughts(text))
-    body = THINK.sub("", text).strip()
+    body = THINK.sub("", text)
+    if (
+        "</think>" in body
+    ):  # thinking opened by the prompt (enable_thinking): only the close is here
+        body = body.rsplit("</think>", 1)[1]
+    body = body.strip()
     raws = TOOL_CALL.findall(body)
     if raws:
         schemas = _schemas(tools)

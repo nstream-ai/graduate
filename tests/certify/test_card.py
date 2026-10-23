@@ -189,3 +189,18 @@ def test_more_conversations_will_not_help_only_when_significantly_above_alpha():
     assert "will not help" not in thin and "not significantly above" in thin
     clear = _one_slice(20, 20).render()  # 20 of 20: the lower bound is far above 5%
     assert "will not help" in clear
+
+
+def test_one_bad_session_of_ten_at_cap_10_stays_undecided():
+    # 10 sessions x 10 calls; one session disagrees on all 10 calls. Per call that is 10%, and a
+    # call-level bound would say "significantly above 5%"; per session it is 1 of 10, which is not
+    # evidence that more conversations cannot help.
+    keys, sess, wrong = [], [], []
+    for s in range(10):
+        for _ in range(10):
+            keys.append("s")
+            sess.append(f"c{s}")
+            wrong.append(s == 0)
+    card = report_card(keys, sess, wrong, cap=10, plan=False)
+    assert not card.slices[0].above_alpha
+    assert "will not help" not in card.render() and "cannot be decided" in card.render()
