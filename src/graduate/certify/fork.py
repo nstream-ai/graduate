@@ -9,9 +9,11 @@ the end of the conversation in a replayable environment:
 
 Each branch ends in a task outcome (pass / fail). Per slice (by the candidate's proposed action):
 
-- signed net harm h = P(T1 pass and S fail) - P(T1 fail and S pass), with the stricter of a
-  task-clustered bootstrap bound and an exact bound conditional on the discordant states;
-- certified iff Benjamini-Hochberg across slices rejects h >= delta_turn, the bound <= delta_turn,
+- signed net harm, task-weighted: the mean over tasks of each task's P(T1 pass and S fail) -
+  P(T1 fail and S pass); one-sided upper bound by the finite-sample task-level betting bound
+  (betting). The task-cluster t bound and the cluster bootstrap are printed for information
+  only (the t bound is not valid on forks); the state-weighted harm is printed beside it;
+- certified iff e-BH across slices rejects h >= delta_turn, the finite-sample bound <= delta_turn,
   n >= 3 / delta_turn, the slice is non-vacuous (P(T1 pass) >= 2 delta_turn) and the reference
   agrees with itself (h_T = T2 vs T1 within 1.645 clustered standard errors of 0);
 - never-route iff the harm bound exceeds half the reference's own success there;
@@ -100,7 +102,6 @@ def slice_stats(pairs: list[dict], delta: float = 0.05, level: float = 0.05, see
 
     from graduate.certify.stats.bounds import (
         clopper_pearson_interval,
-        clopper_pearson_upper,
         risk_pvalue,
     )
 
@@ -114,17 +115,18 @@ def slice_stats(pairs: list[dict], delta: float = 0.05, level: float = 0.05, see
     boot = _cluster_boot(t1 - s, tasks, seed)  # bootstrap of h
     boot_t = _cluster_boot(t1 - t2, tasks, seed + 1)  # bootstrap of h_T
     boot_upper = float(np.quantile(boot, 1 - level))
-    # exact, state-level: given the d = worse + better discordant states,
-    # worse ~ Binomial(d, q) and h = (d / n)(2q - 1); a Clopper-Pearson upper bound on q bounds h
-    d = worse + better
-    # no discordant state: the harm is at most the discordance rate, whose exact zero-event bound
-    # is not 0
-    exact_upper = (
-        (d / n) * (2 * clopper_pearson_upper(worse, d, level) - 1) if d
-        else clopper_pearson_upper(0, n, level)
-    )  # fmt: skip
-    upper = max(boot_upper, exact_upper)  # the stricter certifies
-    binding = "bootstrap" if boot_upper >= exact_upper else "exact"
+    # task-level bounds on the per-task mean harm d_t in [-1, 1] (magnitudes,
+    # not signs); the conditional exact bound was removed (it treated d / n as fixed and returned
+    # the point estimate when no state was better: 14-20% false certification at a one-sided null)
+    from graduate.certify.stats.taskbounds import e_value, finite_upper, t_upper
+
+    per: dict = defaultdict(list)
+    for p, x in zip(pairs, t1 - s, strict=True):
+        per[p["task_id"]].append(float(x))
+    d_task = np.array([sum(v) / len(v) for v in per.values()])
+    finite = finite_upper(d_task, level, seed=seed)
+    t_up = t_upper(d_task, level)
+    upper = finite  # certification uses the finite-sample bound
     h_t_ci = (float(np.quantile(boot_t, 0.025)), float(np.quantile(boot_t, 0.975)))
     h_t, h_t_se = float((t1 - t2).mean()), float(boot_t.std())
     need = states_needed(ch_t / n, delta)
@@ -138,13 +140,14 @@ def slice_stats(pairs: list[dict], delta: float = 0.05, level: float = 0.05, see
         "pass_S": float(s.mean()),
         "worse": worse,
         "better": better,
-        "harm": (worse - better) / n,
+        "harm": (worse - better) / n,  # state-weighted, printed beside the task-weighted estimand
+        "harm_task": float(d_task.mean()),  # the estimand: task-weighted mean harm
         "harm_upper": upper,
-        "harm_upper_bootstrap": boot_upper,
-        "harm_upper_exact": exact_upper,
-        "binding": binding,
-        # one-sided bootstrap p-value for H0: h >= delta (for BH across slices)
-        "p_harm": float((1 + (boot >= delta).sum()) / (1 + boot.size)),
+        "harm_upper_finite": finite,
+        "harm_upper_t": t_up,
+        "harm_upper_bootstrap": boot_upper,  # printed, not used to certify
+        # fixed-time e-value against H0: task-weighted harm >= delta (for e-BH across slices)
+        "e_harm": e_value(d_task, delta, seed=seed),
         "delta": delta,
         "change_T": ch_t / n,
         "change_T_ci": clopper_pearson_interval(ch_t, n),
@@ -178,7 +181,7 @@ def fork_card(
     sees). Verdicts: certified; excluded by evidence (never route); vacuous; cannot be decided with
     this evidence (detectable harm above delta_turn: not a failure); not certified. `serving`
     records the reference's serving configuration: its self-noise floor is a property of it."""
-    from graduate.certify.stats.multiplicity import benjamini_hochberg
+    from graduate.certify.stats.taskbounds import e_bh
 
     delta = session_margin / cap
     card: dict = {"session_margin": session_margin, "cap": cap, "delta_turn": delta,
@@ -193,7 +196,10 @@ def fork_card(
             if len(v) >= min_states
         }
         names = list(table)
-        bh = benjamini_hochberg([table[k]["p_harm"] for k in names], q=level) if names else []
+        # e-BH over the family fixed before any bound: every slice with >= min_states states;
+        # slices not eligible enter with e = 1 (they never help the others)
+        evals = [table[k]["e_harm"] if table[k]["pass_T1"] >= 2 * delta else 1.0 for k in names]
+        bh = e_bh(evals, level)
         for k, ok in zip(names, bh, strict=True):
             t = table[k]
             t["p_T"] = t["pass_T1"]
@@ -212,8 +218,13 @@ def fork_card(
             )
             t["session_harm_upper"] = min(1.0, cap * t["harm_upper"])  # <= cap routed turns
             t["decidable"] = t["detectable_harm"] <= delta
+            # in simulation at one-sided nulls the t bound falsely certifies
+            # up to 46% at a one-sided null on forks (91 of 96 cells), so fork cards never say
+            # "supported (asymptotic only)"; harm_upper_t is printed for information only
+            t["supported_asymptotic"] = False
             t["verdict"] = (
                 "certified" if t["certified"]
+                else "supported (asymptotic only)" if t["supported_asymptotic"]
                 else "excluded by evidence (never route)" if t["never_route"]
                 else f"vacuous (reference succeeds {t['p_T']:.0%})" if not t["eligible"]
                 else (f"cannot be decided with this evidence (detectable harm "

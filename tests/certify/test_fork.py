@@ -28,7 +28,7 @@ def test_detectable_harm_follows_the_pre_registered_rule() -> None:
 
 
 def test_verdicts_cannot_be_decided_is_not_a_failure() -> None:
-    pairs = (_pairs(200, sl="clean") + _pairs(25, noisy=8, sl="thin", tasks=25)
+    pairs = (_pairs(200, sl="clean", tasks=100) + _pairs(25, noisy=8, sl="thin", tasks=25)
              + _pairs(80, worse=60, sl="harm") + _pairs(80, sl="dead", t1=False))  # fmt: skip
     card = fork_card(pairs, session_margin=0.10, cap=1, min_states=20, serving={"model": "ref"})
     t = card["by_proposed_slice"]

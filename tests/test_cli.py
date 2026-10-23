@@ -381,3 +381,10 @@ def test_chat_and_completions_paths_parse_the_same_action() -> None:
     a = action_of([ToolCall(name=c["name"], arguments=c["arguments"]) for c in chat_calls])
     b = action_of([ToolCall(name=c.name, arguments=c.arguments) for c in parsed])
     assert agree(a, b, "args")
+
+
+def test_contract_line_says_not_checked_without_a_tool_list():
+    from graduate.cli import contract_line
+
+    line = contract_line({"conversations_checked": 0, "admissible": True, "checked": False})
+    assert "not checked" in line
