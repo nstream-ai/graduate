@@ -214,6 +214,8 @@ def states(sessions) -> tuple[list[dict[str, Any]], Counter]:
         "violating_share": share,
         "top_violations": violation_names.most_common(5),
         "admissible": share <= CONTRACT_LIMIT,
+        # no tool list in the traces: the contract cannot be checked, and the card says so
+        "checked": checked > 0,
     }
     states.contract = skipped_contract  # read by main(); keeps the (rows, skipped) signature
     return out, skipped
@@ -232,6 +234,7 @@ def certify(
     noisy: set[str] | None = None,
     normalise_args: bool = False,
     contract: dict[str, Any] | None = None,
+    certify_text: bool = False,
 ) -> tuple[Any, dict[str, Any], dict[str, Any]]:
     keys, sess, gates = [], [], {"disagree": [], "invalid": []}
     split = Counter()
@@ -261,10 +264,19 @@ def certify(
         split["reference_replies"] += rk == "text"
         split["replied_instead_of_acting"] += rk != "text" and ck == "text"
         split["acted_instead_of_replying"] += rk == "text" and ck != "text"
-    accepted = [k not in (noisy or set()) for k in keys]
+    accepted = [True] * len(keys)  # noisy slices stay visible; they are held, not dropped
     card = report_card(
         keys, sess, gates=gates, alpha=alpha, delta=delta, cap=cap, accepted=accepted
     )
+    if not certify_text:  # a text reply agrees on the decision only: its wording is unchecked
+        kept = [dataclasses.replace(r, certified=False) if is_text_slice(r.slice) else r
+                for r in card.slices]  # fmt: skip
+        card = dataclasses.replace(
+            card,
+            slices=kept,
+            certified_call_share=sum(r.call_share for r in kept if r.certified),
+            certified_token_share=sum(r.token_share for r in kept if r.certified),
+        )
     decision = {
         "replied_instead_of_acting": split["replied_instead_of_acting"]
         / max(1, split["reference_acts"]),
@@ -273,7 +285,20 @@ def certify(
         "agreement": 1 - sum(gates["disagree"]) / max(1, len(rows)),
     }
     decision["forgiven_format_only"] = sorted(forgiven)
-    decision["reference_contract"] = contract or {"conversations_checked": 0, "admissible": True}
+    decision["reference_contract"] = contract or {
+        "conversations_checked": 0,
+        "admissible": True,
+        "checked": False,
+    }
+    if noisy:  # held: a slice where the reference disagrees with itself is never certified
+        held = [dataclasses.replace(r, certified=False) if r.slice in noisy else r
+                for r in card.slices]  # fmt: skip
+        card = dataclasses.replace(
+            card,
+            slices=held,
+            certified_call_share=sum(r.call_share for r in held if r.certified),
+            certified_token_share=sum(r.token_share for r in held if r.certified),
+        )
     if not decision["reference_contract"][
         "admissible"
     ]:  # no swap is certified against a reference that breaks its contract
@@ -286,8 +311,17 @@ def certify(
     return card, decision, why
 
 
+def is_text_slice(key: str) -> bool:
+    """A slice of text replies: agreement is on the decision (reply, not act), not the wording."""
+    return "/text/" in key or key.endswith("/text")
+
+
 def slice_verdicts(
-    card: Any, alpha: float, why: dict[str, Any] | None = None, calibration: dict | None = None
+    card: Any,
+    alpha: float,
+    why: dict[str, Any] | None = None,
+    calibration: dict | None = None,
+    noisy: set[str] | None = None,
 ) -> list[dict]:
     """Per slice: the verdict and the smallest disagreement margin this evidence can resolve
     (zero-event bound, about 3 / n sessions). A slice whose disagreement is significantly at or
@@ -299,8 +333,12 @@ def slice_verdicts(
     for r in card.slices:
         detectable = 3 / r.sessions if r.sessions else 1.0
         a = card.alphas[r.binding]
-        if r.certified:
+        if r.slice in (noisy or set()):  # the reference disagrees with itself at or above alpha
+            verdict = "held: reference noise (cannot be certified by agreement)"
+        elif r.certified:
             verdict = "certified"
+        elif is_text_slice(r.slice):
+            verdict = "decision only (wording unchecked)"
         elif r.above_alpha:
             verdict = (
                 f"not certified: disagreement {r.rate:.0%} is significantly above alpha {a:g}; "
@@ -391,7 +429,11 @@ def candidate_path(args: Any) -> str:
 def contract_line(c: dict[str, Any]) -> str:
     """card.md: the reference's tool contract. Above the limit nothing is certified."""
     if not c["conversations_checked"]:
-        return ""
+        return (
+            "Reference tool contract: **not checked**. The traces carry no tool list, so calls to "
+            "tools outside the agent's list cannot be seen. Export the agent's tools with each "
+            "session to check it; until then the reference's admissibility is unknown.\n"
+        )
     top = ", ".join(f"`{n}` {k}" for n, k in c["top_violations"])
     if not c["admissible"]:
         return (
@@ -456,12 +498,13 @@ def claim_b(args: Any, out: Path) -> None:
           f" Reference self-noise floor: h_T {f.get('h_T', float('nan')):+.1%}, flips "
           f"{f.get('change_T', float('nan')):.1%}.",
           "\n| candidate proposes | states (tasks) | reference success | net harm (upper) | "
-          "bootstrap / exact (binding) | session harm (upper) | detectable harm | verdict |",
+          "finite-sample / t / bootstrap | session harm (upper) | detectable harm | verdict |",
           "|---|---|---|---|---|---|---|---|"]  # fmt: skip
     for k, t in card["by_proposed_slice"].items():
         md.append(f"| {k} | {t['n_states']} ({t['n_tasks']}) | {t['p_T']:.0%} | "
-                  f"{t['harm']:+.1%} ({t['harm_upper']:.1%}) | {t['harm_upper_bootstrap']:.1%} / "
-                  f"{t['harm_upper_exact']:.1%} ({t['binding']}) | {t['session_harm_upper']:.1%} | "
+                  f"{t['harm_task']:+.1%} ({t['harm_upper']:.1%}; states {t['harm']:+.1%}) | "
+                  f"{t['harm_upper_finite']:.1%} / {t['harm_upper_t']:.1%} / "
+                  f"{t['harm_upper_bootstrap']:.1%} | {t['session_harm_upper']:.1%} | "
                   f"{t['detectable_harm']:.1%} | {t['verdict']} |")  # fmt: skip
     md.append(f"\nComposition: {card['composition']}. Requires {card['requires']}.")
     md.append(f"\nCertified: {card['routing']['certified'] or 'none'}. "
@@ -503,8 +546,9 @@ def compare_cmd(args: Any, out: Path) -> None:
             f"{r['candidate_success']:.1%}. Regret {r['regret']:+.1%} (one-sided 95% upper bound "
             f"{r['regret_upper']:+.1%}; candidate worse on {r['tasks_worse']} tasks, better on "
             f"{r['tasks_better']}). Smallest regret this evidence could detect: "
-            f"{r['detectable_regret']:.1%}. Bounds: bootstrap {r['regret_upper_bootstrap']:+.1%}, "
-            f"exact {r['regret_upper_exact']:+.1%} ({r['binding']} binds). Non-vacuity: the "
+            f"{r['detectable_regret']:.1%}. Bounds: finite-sample {r['regret_upper_finite']:+.1%} "
+            f"(decides), t {r['regret_upper_t']:+.1%} (asymptotic), bootstrap "
+            f"{r['regret_upper_bootstrap']:+.1%}. Non-vacuity: the "
             f"reference succeeds {r['reference_success']:.0%} "
             f"({'at least' if r['non_vacuous'] else 'below'} 2 x margin).\n\n**{r['verdict']}** "
             f"at a margin of {r['margin']:.0%}.\n")  # fmt: skip
@@ -593,6 +637,11 @@ def main(argv: list[str] | None = None) -> None:
     )
     c.add_argument("--limit", type=int, default=None, help="first N conversations only")
     c.add_argument("--concurrency", type=int, default=8, help="parallel requests")
+    c.add_argument(
+        "--certify-text-slices",
+        action="store_true",
+        help="count text-reply slices as certifiable (their wording is not checked)",
+    )
     c.add_argument(
         "--reference-base-url",
         default=None,
@@ -771,6 +820,7 @@ def main(argv: list[str] | None = None) -> None:
         noisy,
         args.normalise_args,
         getattr(states, "contract", None),
+        args.certify_text_slices,
     )
     card, calibration = plan_history(card, out / "planner.json", fresh=args.fresh)
     report = {
@@ -784,7 +834,7 @@ def main(argv: list[str] | None = None) -> None:
         "cap": args.cap,
         "certified_call_share": card.certified_call_share,
         "certified_slices": [r.slice for r in card.slices if r.certified],
-        "slices": slice_verdicts(card, args.alpha, why, calibration),
+        "slices": slice_verdicts(card, args.alpha, why, calibration, noisy),
         "normaliser": {"version": NORMALISER_VERSION, "rule": NORMALISER},
         "format_only_counted_as_agreement": decision["forgiven_format_only"],
         "reference_contract": decision["reference_contract"],

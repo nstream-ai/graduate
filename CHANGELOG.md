@@ -3,9 +3,44 @@
 All notable changes to this project are listed here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [0.2.0] - 2026-10-22
+## [0.2.0] - 2026-10-23
 
 Certification by effect and session-level comparison: the methods the paper uses.
+
+**Corrected before release (2026-10-23).** The bound first written for `claim-b` and `compare`,
+the stricter of a task-clustered bootstrap and an "exact" bound conditional on the discordant
+states, was not valid: the conditional bound treats the discordance rate as known, returns the
+point estimate when the candidate is never better, and returns 0 when no task differs. At a
+one-sided null it falsely certified 14–20% of slices at 30–60 states. It is replaced:
+
+- `graduate certify`: text-reply slices read "decision only (wording unchecked)" and stay out of
+  the certified share (their agreement is on the decision, not the wording);
+  `--certify-text-slices` counts them. Slices where the reference disagrees with itself at or
+  above alpha (`--reference-base-url`) stay on the card as "held: reference noise" instead of
+  disappearing.
+- `claim-b`: `cap_max_informative` comes from certified slices only (an uncertified slice is not
+  routed); with no certified slice it is "not defined".
+- `claim-b` and `compare` certify with a **finite-sample, task-level betting bound** on the
+  per-task mean difference (magnitudes, not signs; `graduate.certify.stats.taskbounds`). In a
+  120-cell simulation at one-sided nulls, with within-task correlation from 0 to 1, its worst
+  false-certification rate is 1.1% at a nominal 5%.
+- A task-cluster t bound and the bootstrap are printed for information. On forks the t bound
+  falsely certifies up to 46%, so fork cards never use it. `compare` labels a result
+  "supported (asymptotic only)" only with at least 100 tasks or two trials per task.
+- `claim-b` controls multiplicity with **e-BH** on the finite-sample e-values (valid under the
+  dependence that shared tasks create); the family is fixed before the e-values are read, and
+  ineligible slices enter with e = 1.
+- `compare` reads "cannot be decided" first when there are fewer than 3 / margin tasks.
+- `certify` says "reference tool contract: not checked" when the traces carry no tool list,
+  instead of treating the reference as admissible without comment.
+- New extra: `pip install "graduate[completions]"` (transformers), which the completions path
+  asks for.
+- README: routing is described as a cascade (the candidate answers every turn; its answer is
+  kept on certified slices), and `claim-b` is described as scoring forks, which need an
+  environment runner Graduate does not ship.
+
+The items below were written before the correction; where they mention "the stricter of a
+task-clustered bootstrap and an exact bound" or "the binding one", read the bounds above.
 
 - `graduate claim-b`: certify slices by outcome from forked conversations (the candidate answers
   one turn, the reference finishes). Signed net harm with the stricter of a task-clustered

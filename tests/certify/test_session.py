@@ -28,7 +28,7 @@ def test_too_few_tasks_cannot_be_decided() -> None:
     cand = {f"t{i}": [0.0 if i % 2 else 1.0] for i in range(12)}  # flips everywhere, mean 0
     r = compare(ref, cand, margin=0.10)
     assert r["detectable_regret"] > 0.10
-    assert r["verdict"] == "cannot be decided with this evidence"
+    assert r["verdict"].startswith("cannot be decided with this evidence")
 
 
 def test_compare_cli_reads_jsonl_rows(tmp_path: Path) -> None:
@@ -49,5 +49,5 @@ def test_vacuous_when_the_reference_rarely_succeeds_and_both_bounds_are_named():
     r = compare(ref, cand, margin=0.10)
     assert not r["non_vacuous"] and r["verdict"].startswith("vacuous")
     ok = compare({f"t{i}": [1.0] for i in range(30)}, {f"t{i}": [1.0] for i in range(30)})
-    assert ok["non_vacuous"] and ok["binding"] in ("bootstrap", "exact")
-    assert {"regret_upper_bootstrap", "regret_upper_exact"} <= set(ok)
+    assert ok["non_vacuous"]
+    assert {"regret_upper_finite", "regret_upper_t", "regret_upper_bootstrap"} <= set(ok)

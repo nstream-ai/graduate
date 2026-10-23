@@ -28,7 +28,7 @@ def test_detectable_harm_follows_the_pre_registered_rule() -> None:
 
 
 def test_verdicts_cannot_be_decided_is_not_a_failure() -> None:
-    pairs = (_pairs(200, sl="clean") + _pairs(25, noisy=8, sl="thin", tasks=25)
+    pairs = (_pairs(200, sl="clean", tasks=100) + _pairs(25, noisy=8, sl="thin", tasks=25)
              + _pairs(80, worse=60, sl="harm") + _pairs(80, sl="dead", t1=False))  # fmt: skip
     card = fork_card(pairs, session_margin=0.10, cap=1, min_states=20, serving={"model": "ref"})
     t = card["by_proposed_slice"]
@@ -76,6 +76,16 @@ def test_cap_max_informative_is_the_margin_over_the_per_turn_bound():
         for i in range(400)
     ]  # fmt: skip
     card = fork_card(pairs, session_margin=0.10, cap=1)
-    upper = card["all"]["harm_upper"]
+    # 40 tasks with some harm: nothing certifies, so no cap is informative
+    assert not card["by_proposed_slice"]["a"]["certified"]
+    assert card["cap_max_informative"] is None and "no certified slice" in card["composition"]
+    clean = [
+        {"state": str(i), "task_id": f"t{i}", "slice": "b", "proposed_slice": "b",
+         "T1": True, "T2": True, "S": True}
+        for i in range(200)
+    ]  # fmt: skip
+    card = fork_card(pairs + clean, session_margin=0.10, cap=1)
+    upper = card["by_proposed_slice"]["b"]["harm_upper"]  # from the certified slice only
+    assert card["by_proposed_slice"]["b"]["certified"]
     assert card["cap_max_informative"] == math.floor(0.10 / upper)
     assert f"informative up to cap {card['cap_max_informative']}" in card["composition"]

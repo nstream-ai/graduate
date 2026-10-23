@@ -8,7 +8,7 @@ and a **candidate model** (any model behind an OpenAI-compatible endpoint: a sma
 vLLM or Ollama, a cheaper API, or a model you trained), asks the candidate every logged state,
 and gives back a **report card**: the slices of traffic the candidate is certified to handle, with
 a statistical bound that holds for real agent traffic (calls linked within a conversation, many
-slices tested at once, small samples). Plug the certified slices into the router you already have.
+slices tested at once, small samples). Use them as a cascade: the candidate answers each turn, its answer is kept when it falls in a certified slice, and the reference answers otherwise. The cascade pays for a candidate call on every turn and adds latency on the turns it escalates.
 
 Website: https://nstream-ai.github.io/graduate/ (experiments overview at `/grid/`)
 
@@ -49,7 +49,7 @@ experiments: on a local server, with `--preset tau2` traces.
 You get, in `report/`:
 
 - **certified slices**: each slice is the candidate's proposed action (call type, tool, position
-  in the session), which is what a router can see before deciding; a slice is certified when its
+  in the session), which is known once the candidate has answered (the routing is a cascade); a slice is certified when its
   disagreement with your reference model is provably below `--alpha` (default 5%) at 95%
   confidence;
 - **certified share**: the fraction of your calls inside certified slices;
@@ -73,8 +73,7 @@ disagreeing call and an example with its values redacted.
 ## Terms
 
 - **Call**: every model turn in a conversation, a tool call or a text reply.
-- **Slice**: one kind of decision the candidate proposes, which a router can see before it
-  routes: agent node, call type (tool or text), tool name, and position in the conversation.
+- **Slice**: one kind of decision the candidate proposes, known once it has answered: agent node, call type (tool or text), tool name, and position in the conversation.
 - **alpha**: the disagreement rate you allow on a slice (default 0.05). **delta**: 1 − confidence
   (default 0.05, so 95% confidence).
 - **cap**: calls counted per conversation and slice (default 1), so one long conversation cannot
@@ -122,14 +121,16 @@ sampled conversation at a turn, and run three branches from that exact state:
 
 Write one JSON line per branch:
 `{"state", "task_id", "slice", "branch": "T1"|"T2"|"S", "success": true|false, "termination"}`
-(plus `proposed_slice`, the candidate's own action, when it differs from the logged one). Then:
+(plus `proposed_slice`, the candidate's own action, when it differs from the logged one).
+Graduate scores forks; it does not run them. Producing them needs a runner that resets your
+environment to the logged state. Then:
 
     graduate claim-b forks.jsonl --session-margin 0.10 --cap 1 --out claim-b/
 
 For each slice of the candidate's proposals, the card reports:
 - the **signed net harm**: sessions the candidate's turn made worse minus sessions it made
-  better, per routed turn, with a one-sided upper bound (the stricter of a task-clustered
-  bootstrap and an exact bound);
+  better, per routed turn, with a one-sided finite-sample upper bound with tasks as the unit (a betting bound; a
+  task-cluster t bound and a bootstrap bound are printed for information only);
 - **never route**: harm is likely and could be large, so the router always sends it to the
   reference;
 - **vacuous**: the reference itself rarely succeeds there, so "no harm" means nothing;
@@ -155,14 +156,15 @@ Run the reference and the candidate (or a hybrid router) on the same tasks, then
 Input: `{"task_id", "success"}` lines, or τ²-bench `results.json` files (`--outcome db` for the
 database end state, `reward` for the full reward; infrastructure errors are left out). The report
 gives the paired regret (reference success − candidate success), with a one-sided 95% upper bound
-from the stricter of a task-clustered bootstrap and an exact test, and the smallest regret the
-evidence could detect. The verdict is "non-inferior", "not non-inferior", or "cannot be decided
+from a finite-sample betting bound with tasks as the unit (t and bootstrap bounds printed for
+information), and the smallest regret the evidence could detect. The verdict is "non-inferior", "not non-inferior", or "cannot be decided
 with this evidence" when the task count is too small for the margin (a few dozen tasks rarely
 resolve 10 points).
 
 ## How the certificate works
 
-- **Exact bounds, not normal approximations.** Clopper–Pearson bounds and exact one-sided tests;
+- **Finite-sample bounds, not normal approximations.** Clopper–Pearson bounds per call, and
+  betting bounds for fork and session claims;
   the central-limit approximations common in LLM evaluation under-cover at the sample sizes real
   slices have.
 - **Many slices, one error budget.** Benjamini–Hochberg across slices (Holm, Bonferroni and
@@ -179,7 +181,7 @@ resolve 10 points).
   replies separately, or measure outcomes.
 - **Outcomes.** Agreement with the reference is a proxy. Where an environment can be replayed, the
   stronger claim is *by effect*: fork the conversation, let the candidate answer one turn, let the
-  reference finish, and compare task outcomes. `graduate claim-b` does this (below).
+  reference finish, and compare task outcomes. `graduate claim-b` scores such forks (below); running them needs an environment runner.
 
 ## Using a judge
 
