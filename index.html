@@ -217,7 +217,7 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
 
 <main>
 <div class="wrap hero">
-  <span class="eyebrow">Research preview · v0.1 open source</span>
+  <span class="eyebrow">Research preview · v0.2 open source</span>
   <h1>Prove when your small model is ready to take over.</h1>
   <p class="lede">Bring your AI agent's logs and a cheaper candidate model. Get back honest, statistically checked proof of <em>which parts of the work it can safely take over</em> from the big model.</p>
   <div class="cta">
@@ -406,7 +406,13 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
 <section id="status">
   <div class="wrap">
     <h2>Where it stands</h2>
-    <p class="sub">Honest results so far: the statistics work. The candidates we have tested either aren't accurate enough yet, or there aren't enough test conversations to prove they are. Each verdict was pre-registered before the run.</p>
+    <p class="sub">Where v0.2 stands, in four lines. Each verdict was pre-registered before its run.</p>
+    <ol class="tight" style="font-size:16px;margin:0 0 22px 1.2em">
+      <li><b>A corrected bound.</b> The per-slice and session bounds are now finite-sample bounds on per-task differences. An earlier bound could approve wrongly at a one-sided null; the new one held its 5% level in every simulated setting.</li>
+      <li><b>No per-slice certificate yet with this evidence.</b> The harm measured per slice is small, but each slice has too few distinct tasks (roughly 12–60) to prove it. About 2–4× more tasks per slice are needed.</li>
+      <li><b>Whole conversations: no worse than a fast general-purpose reference.</b> On 131 retail and airline tasks, the small model with a fallback to the reference was non-inferior at a 10-point margin, and so was a telecom comparison on 140 tasks.</li>
+      <li><b>Undecided against a stronger reasoning-tier reference.</b> Against a larger reference model the same comparisons cannot be decided with this evidence.</li>
+    </ol>
 
     <div class="card" style="margin-bottom:20px">
       <h3>How to read a verdict</h3>
@@ -425,17 +431,19 @@ footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; g
           <li>Statistics library (<code>graduate.certify</code>), typed, tested</li>
           <li>One trace schema and converters for seven formats</li>
           <li>Report card and the <code>graduate certify</code> command line</li>
+          <li>Certification by effect from forked conversations (<code>graduate claim-b</code>) and whole-conversation comparison (<code>graduate compare</code>)</li>
+          <li>A reference contract check: a reference that calls tools it does not have is not used</li>
         </ul>
       </div>
       <div class="card"><h3>Next</h3>
         <ul class="tight" style="color:var(--muted);font-size:15px">
-          <li>Outcome-based certification on replayable environments</li>
-          <li>Larger held-out sets, so more slices can be decided</li>
+          <li>More distinct tasks per slice, so slices can be decided</li>
+          <li>A second agent benchmark and a second candidate family</li>
           <li>Shadow mode with a restarting drift detector</li>
         </ul>
       </div>
     </div>
-    <p class="note" style="margin-top:20px"><b>Why nothing graduated yet:</b> evidence, not the model, is the bottleneck. At a 3–5% claim a slice needs hundreds to ~1,000 independent sessions. See the <a href="grid/">experiments overview</a> for what is running.</p>
+    <p class="note" style="margin-top:20px"><b>Why no slice is certified yet:</b> evidence, not the model, is the bottleneck: a slice needs more distinct tasks than we had. The paper, with every pre-registered result, will be linked here once it is public. See the <a href="grid/">experiments overview</a> for the runs.</p>
   </div>
 </section>
 
