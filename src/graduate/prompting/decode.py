@@ -84,7 +84,13 @@ def _gemma_calls(body: str) -> tuple[str, list[ToolCall]]:
 def parse_completion(text: str, tools: Any = None) -> tuple[str, list[ToolCall]]:
     """(reply text, tool calls) from generated text: Hermes/Qwen `<tool_call>` blocks (JSON or
     Qwen3.5 XML), Gemma 4 `<|tool_call>call:name{...}<tool_call|>`, or a bare JSON call. `tools`
-    (the turn's tool schemas) types XML parameter values."""
+    (the turn's tool schemas) types XML parameter values. gpt-oss harmony output (`<|channel|>`,
+    `<|message|>`, ...) goes to `graduate.prompting.harmony`; its tokens never occur in the
+    others' output, so their parsing is unchanged."""
+    from graduate.prompting.harmony import is_harmony, parse_harmony
+
+    if is_harmony(text):
+        return parse_harmony(text)
     if "<|tool_call>" in text or "<|channel>" in text:
         from graduate.prompting.gemma import strip_thoughts
 
