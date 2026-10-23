@@ -25,6 +25,18 @@ Certification by effect and session-level comparison: the methods the paper uses
   whether the normaliser was applied (its rule is in the legend), and tool names print plainly.
 - `claim-b` cards report `cap_max_informative`: the largest router cap for which the per-turn
   bound still supports the session margin under the union bound.
+- `graduate certify --prompt-mode completions`: the candidate's prompt is rendered from its own
+  chat template (thinking off), fitted to `--prompt-tokens`, sent to `/completions`, and parsed
+  with `graduate.prompting`. This is the path the paper's exams use. `chat` (the server's
+  template and tool parser) stays the default.
+- `graduate compare`: session-level non-vacuity. If the reference succeeds on less than twice
+  the margin, the verdict reads "vacuous". Both bounds are printed, and the binding one is
+  named.
+- The reference contract line: a reference that calls tools outside its own tool list in more
+  than 20% of sessions on a domain is not an admissible reference there, and nothing is
+  certified against it.
+- `claim-b`: slices with fewer than 30 states stay out of the multiple-comparison family.
+  Zero-discordance slices get the exact zero-event bound. `states_needed` is sized at 80% power.
 - **Import path renamed:** `graduate.train` is now `graduate.prompting` (`to_chat`,
   `tools_spec`, `parse_completion`, the Gemma parser). Code that imported
   `graduate.train.decode` or `graduate.train.data` from v0.1 must change its imports. No trainer
