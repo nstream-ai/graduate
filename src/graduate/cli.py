@@ -34,7 +34,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
-from graduate.certify.card import above_gate, plan_text, report_card
+from graduate.certify.card import plan_text, report_card
 from graduate.certify.causes import (
     CAUSES,
     NORMALISER,
@@ -122,10 +122,60 @@ def ask(
     return {"text": text, "calls": calls}
 
 
+COMPLETION_TOKENS = 256  # new tokens per call on the completions path, as in the research path
+
+
+def load_renderer(tokenizer_id: str, prompt_tokens: int, max_len: int) -> dict[str, Any]:
+    """The tokenizer and limits for --prompt-mode completions (needs the `completions` extra)."""
+    try:
+        from transformers import AutoTokenizer
+    except ImportError:
+        _fail('--prompt-mode completions needs transformers: pip install "graduate[completions]"')
+    from graduate.prompting.render import ensure_template, stop_token_ids
+
+    tok = AutoTokenizer.from_pretrained(tokenizer_id)
+    ensure_template(tok)
+    return {"tok": tok, "stop": sorted(stop_token_ids(tokenizer_id)),
+            "prompt_tokens": prompt_tokens, "max_len": max_len}  # fmt: skip
+
+
+def ask_completions(
+    base_url: str, model: str, api_key: str | None, chat: list, tools: list, renderer: dict,
+    timeout: float = 300,
+) -> dict[str, Any]:  # fmt: skip
+    """One call on the research path: the prompt rendered with the model's own chat template
+    (thinking off), fitted to the token budget by dropping the oldest turns, sent to
+    `/completions`, and the reply read by Graduate's parsers."""
+    from graduate.prompting.render import fit_messages, render_prompt
+
+    tok = renderer["tok"]
+    msgs = fit_messages(chat, tools, tok, renderer["prompt_tokens"])
+    ids = tok(render_prompt(msgs, tools, tok), add_special_tokens=False)["input_ids"]
+    ids = ids[-(renderer["max_len"] - COMPLETION_TOKENS) :]
+    body = {"model": model, "prompt": ids, "max_tokens": COMPLETION_TOKENS, "temperature": 0.0,
+            "stop_token_ids": renderer["stop"], "skip_special_tokens": False}  # fmt: skip
+    req = urllib.request.Request(
+        base_url.rstrip("/") + "/completions",
+        data=json.dumps(body).encode(),
+        headers={
+            "Content-Type": "application/json",
+            **({"Authorization": f"Bearer {api_key}"} if api_key else {}),
+        },
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        text = json.load(r)["choices"][0]["text"]
+    content, parsed = parse_completion(text, tools)
+    return {"text": content, "calls": [{"name": c.name, "arguments": c.arguments} for c in parsed]}
+
+
 def states(sessions) -> tuple[list[dict[str, Any]], Counter]:
     """Every reference call with its input state; calls naming a tool the agent does not have, or
     with unparsable arguments, are reference mistakes and left out (counted)."""
     out, skipped = [], Counter()
+    violated: dict[
+        str, bool
+    ] = {}  # the reference's tool contract, per conversation with a tool list
+    violation_names: Counter = Counter()
     for s in sessions:
         system = [{"role": "system", "content": s.system}] if s.system else []
         tools, names = tools_spec(s), {t.name for t in s.tools}
@@ -134,6 +184,10 @@ def states(sessions) -> tuple[list[dict[str, Any]], Counter]:
                 skipped["not_reference"] += 1
                 continue
             ref = s.call_tool_calls(c)
+            if names:
+                bad = [t.name for t in ref if t.name not in names]
+                violated[s.session_id] = violated.get(s.session_id, False) or bool(bad)
+                violation_names.update(bad)
             if any(t.parse == "failed" for t in ref) or (
                 names and any(t.name not in names for t in ref)
             ):
@@ -148,9 +202,20 @@ def states(sessions) -> tuple[list[dict[str, Any]], Counter]:
                     "tools": tools,
                     "schemas": s.tools,
                     "messages": openai_messages(system + to_chat(s.call_input(c))),
+                    "chat": system + to_chat(s.call_input(c)),  # for --prompt-mode completions
                     "reference": [{"name": t.name, "arguments": t.arguments} for t in ref],
                 }
             )
+    checked = len(violated)
+    share = sum(violated.values()) / checked if checked else 0.0
+    skipped_contract = {
+        "conversations_checked": checked,
+        "violating_conversations": sum(violated.values()),
+        "violating_share": share,
+        "top_violations": violation_names.most_common(5),
+        "admissible": share <= CONTRACT_LIMIT,
+    }
+    states.contract = skipped_contract  # read by main(); keeps the (rows, skipped) signature
     return out, skipped
 
 
@@ -166,6 +231,7 @@ def certify(
     cap: int,
     noisy: set[str] | None = None,
     normalise_args: bool = False,
+    contract: dict[str, Any] | None = None,
 ) -> tuple[Any, dict[str, Any], dict[str, Any]]:
     keys, sess, gates = [], [], {"disagree": [], "invalid": []}
     split = Counter()
@@ -207,6 +273,16 @@ def certify(
         "agreement": 1 - sum(gates["disagree"]) / max(1, len(rows)),
     }
     decision["forgiven_format_only"] = sorted(forgiven)
+    decision["reference_contract"] = contract or {"conversations_checked": 0, "admissible": True}
+    if not decision["reference_contract"][
+        "admissible"
+    ]:  # no swap is certified against a reference that breaks its contract
+        card = dataclasses.replace(
+            card,
+            slices=[dataclasses.replace(s, certified=False) for s in card.slices],
+            certified_call_share=0.0,
+            certified_token_share=0.0,
+        )
     return card, decision, why
 
 
@@ -215,7 +291,8 @@ def slice_verdicts(
 ) -> list[dict]:
     """Per slice: the verdict and the smallest disagreement margin this evidence can resolve
     (zero-event bound, about 3 / n sessions). A slice whose disagreement is significantly at or
-    above alpha (one-sided lower bound >= alpha) is not certified and more evidence will not change
+    above alpha (the card's betting test mirrored, H0: rate <= alpha, rejects; sessions are the
+    unit) is not certified and more evidence will not change
     that; otherwise a slice not yet certified "cannot be decided with this evidence" (not a
     failure), with the planner's range when its observed rate is below alpha."""
     out = []
@@ -224,7 +301,7 @@ def slice_verdicts(
         a = card.alphas[r.binding]
         if r.certified:
             verdict = "certified"
-        elif above_gate(r.rate, r.certified_population, a, card.delta):
+        elif r.above_alpha:
             verdict = (
                 f"not certified: disagreement {r.rate:.0%} is significantly above alpha {a:g}; "
                 "more conversations will not help"
@@ -296,6 +373,39 @@ def _names(x: Any) -> str:
     return ", ".join(x) if isinstance(x, list) else str(x)
 
 
+def candidate_path(args: Any) -> str:
+    """How the candidate was asked: cards are comparable only between the same paths."""
+    if args.prompt_mode == "completions":
+        tok = args.tokenizer or args.model
+        return (
+            f"completions (Graduate renders {tok}'s chat template with thinking off, prompt "
+            f"fitted to {args.prompt_tokens} tokens, {COMPLETION_TOKENS} new tokens, replies read "
+            "by graduate.prompting's parsers; the paper's path)"
+        )
+    return (
+        "chat (the server's chat template and tool-call parser; not comparable to cards made "
+        "with --prompt-mode completions)"
+    )
+
+
+def contract_line(c: dict[str, Any]) -> str:
+    """card.md: the reference's tool contract. Above the limit nothing is certified."""
+    if not c["conversations_checked"]:
+        return ""
+    top = ", ".join(f"`{n}` {k}" for n, k in c["top_violations"])
+    if not c["admissible"]:
+        return (
+            f"**Reference not admissible:** in {c['violating_share']:.0%} of "
+            f"{c['conversations_checked']:,} conversations it calls tools that are not in its tool "
+            f"list ({top}). Above {CONTRACT_LIMIT:.0%}, no swap is certified against it; fix the "
+            "reference (prompt or tool list) first.\n\n"
+        )
+    return (
+        f"Reference tool contract: {c['violating_share']:.1%} of {c['conversations_checked']:,} "
+        "conversations call tools outside the tool list" + (f" ({top})" if top else "") + ".\n\n"
+    )
+
+
 def why_table(rows: list[dict[str, Any]], forgiven: list[str] | None = None) -> str:
     """card.md: one line per slice with disagreements that is not certified, or whose format-only
     differences --normalise-args counted as agreement (marked as such)."""
@@ -346,11 +456,12 @@ def claim_b(args: Any, out: Path) -> None:
           f" Reference self-noise floor: h_T {f.get('h_T', float('nan')):+.1%}, flips "
           f"{f.get('change_T', float('nan')):.1%}.",
           "\n| candidate proposes | states (tasks) | reference success | net harm (upper) | "
-          "session harm (upper) | detectable harm | verdict |",
-          "|---|---|---|---|---|---|---|"]  # fmt: skip
+          "bootstrap / exact (binding) | session harm (upper) | detectable harm | verdict |",
+          "|---|---|---|---|---|---|---|---|"]  # fmt: skip
     for k, t in card["by_proposed_slice"].items():
         md.append(f"| {k} | {t['n_states']} ({t['n_tasks']}) | {t['p_T']:.0%} | "
-                  f"{t['harm']:+.1%} ({t['harm_upper']:.1%}) | {t['session_harm_upper']:.1%} | "
+                  f"{t['harm']:+.1%} ({t['harm_upper']:.1%}) | {t['harm_upper_bootstrap']:.1%} / "
+                  f"{t['harm_upper_exact']:.1%} ({t['binding']}) | {t['session_harm_upper']:.1%} | "
                   f"{t['detectable_harm']:.1%} | {t['verdict']} |")  # fmt: skip
     md.append(f"\nComposition: {card['composition']}. Requires {card['requires']}.")
     md.append(f"\nCertified: {card['routing']['certified'] or 'none'}. "
@@ -392,11 +503,16 @@ def compare_cmd(args: Any, out: Path) -> None:
             f"{r['candidate_success']:.1%}. Regret {r['regret']:+.1%} (one-sided 95% upper bound "
             f"{r['regret_upper']:+.1%}; candidate worse on {r['tasks_worse']} tasks, better on "
             f"{r['tasks_better']}). Smallest regret this evidence could detect: "
-            f"{r['detectable_regret']:.1%}.\n\n**{r['verdict']}** at a margin of "
-            f"{r['margin']:.0%}.\n")  # fmt: skip
+            f"{r['detectable_regret']:.1%}. Bounds: bootstrap {r['regret_upper_bootstrap']:+.1%}, "
+            f"exact {r['regret_upper_exact']:+.1%} ({r['binding']} binds). Non-vacuity: the "
+            f"reference succeeds {r['reference_success']:.0%} "
+            f"({'at least' if r['non_vacuous'] else 'below'} 2 x margin).\n\n**{r['verdict']}** "
+            f"at a margin of {r['margin']:.0%}.\n")  # fmt: skip
     (out / "compare.md").write_text(text)
     print(text)
 
+
+CONTRACT_LIMIT = 0.20  # share of conversations above which the reference is not admissible
 
 CARD_LEGEND = """How to read the table: a slice is one kind of decision the candidate proposes
 (agent node / call type / tool / position bucket in the conversation). sess = conversations
@@ -405,7 +521,9 @@ upper = its 1 - delta upper bound; detect = the smallest disagreement rate this 
 conversations can rule out (about 3 / sess); p = p-value after the multiplicity correction; share =
 fraction of all calls. GRADUATED = certified at alpha: a router may send this slice to the
 candidate. "-" = not certified; "not enough evidence" says how many more conversations a
-slice would likely need at its observed rate.
+slice would likely need at its observed rate. "Will not help" means the same betting test,
+mirrored (H0: disagreement <= alpha), rejects on the capped per-conversation counts; it is
+anytime-valid, so rerunning as conversations arrive does not inflate it.
 """
 
 
@@ -487,6 +605,21 @@ def main(argv: list[str] | None = None) -> None:
         help="env var holding the reference endpoint's API key; unset: no key is sent",
     )
     c.add_argument("--reference-samples", type=int, default=200, help="states re-asked")
+    c.add_argument(
+        "--prompt-mode",
+        choices=["chat", "completions"],
+        default="chat",
+        help="chat: the server's chat template and tool parser (Ollama, vLLM, any "
+        "OpenAI-compatible server); completions: Graduate renders the model's chat template "
+        "(thinking off), calls /completions and parses the reply itself, as the paper does",
+    )
+    c.add_argument(
+        "--tokenizer", default=None, help="completions mode: tokenizer id (default: --model)"
+    )
+    c.add_argument(
+        "--prompt-tokens", type=int, default=12288, help="completions mode: prompt budget"
+    )
+    c.add_argument("--max-model-len", type=int, default=16384, help="completions mode: context")
     c.add_argument("--out", default="graduate-report", help="output folder")
     c.add_argument(
         "--fresh", action="store_true", help="ignore cached answers in --out and ask again"
@@ -546,6 +679,11 @@ def main(argv: list[str] | None = None) -> None:
         _fail(f"no reference calls found in {args.traces} with --preset {args.preset}")
     cache = out / "proposals.jsonl"
     stamp = {"_cache": 1, "model": args.model, "base_url": args.base_url, "traces": args.traces}
+    renderer = None
+    if args.prompt_mode == "completions":  # a different path gives different answers: own cache
+        stamp["prompt_mode"] = "completions"
+        stamp["tokenizer"] = args.tokenizer or args.model
+        renderer = load_renderer(stamp["tokenizer"], args.prompt_tokens, args.max_model_len)
     proposals: dict[str, dict] = {}
     if cache.exists() and not args.fresh:
         lines = [json.loads(x) for x in cache.read_text().splitlines() if x.strip()]
@@ -565,7 +703,11 @@ def main(argv: list[str] | None = None) -> None:
         try:
             return {
                 "key": r["key"],
-                **ask(args.base_url, args.model, key, r["messages"], r["tools"]),
+                **(
+                    ask_completions(args.base_url, args.model, key, r["chat"], r["tools"], renderer)
+                    if renderer
+                    else ask(args.base_url, args.model, key, r["messages"], r["tools"])
+                ),
             }
         except Exception as e:  # a failed request is a failed proposal, never a pass
             return {"key": r["key"], "text": "", "calls": [], "error": str(e)[:200]}
@@ -621,11 +763,19 @@ def main(argv: list[str] | None = None) -> None:
         noisy = {k for k, v in noise.items() if v >= args.alpha}
 
     card, decision, why = certify(
-        rows, proposals, args.alpha, args.delta, args.cap, noisy, args.normalise_args
+        rows,
+        proposals,
+        args.alpha,
+        args.delta,
+        args.cap,
+        noisy,
+        args.normalise_args,
+        getattr(states, "contract", None),
     )
     card, calibration = plan_history(card, out / "planner.json", fresh=args.fresh)
     report = {
         "candidate": args.model,
+        "candidate_path": candidate_path(args),
         "reference_calls": len(rows),
         "failed_requests": errors,
         "left_out": dict(skipped),
@@ -637,6 +787,7 @@ def main(argv: list[str] | None = None) -> None:
         "slices": slice_verdicts(card, args.alpha, why, calibration),
         "normaliser": {"version": NORMALISER_VERSION, "rule": NORMALISER},
         "format_only_counted_as_agreement": decision["forgiven_format_only"],
+        "reference_contract": decision["reference_contract"],
         "decision_split": decision,
         "reference_self_disagreement": noise,
         "too_noisy_to_certify_by_agreement": sorted(noisy),
@@ -644,11 +795,13 @@ def main(argv: list[str] | None = None) -> None:
     (out / "card.json").write_text(json.dumps(report, indent=2, default=str))
     md = (
         f"# Graduate report card: {args.model}\n\n"
+        + f"Candidate path: {candidate_path(args)}.\n\n"
         + (
             f"**{errors:,} requests failed** and are left out; rerun to retry.\n\n"
             if errors
             else ""
         )
+        + contract_line(decision["reference_contract"])
         + f"{len(rows):,} reference calls; certified share **{card.certified_call_share:.1%}** "
         f"at alpha {args.alpha:g}, confidence {1 - args.delta:.0%}.\n\n"
         f"Replied instead of acting: {decision['replied_instead_of_acting']:.1%}; acted "

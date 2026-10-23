@@ -39,3 +39,15 @@ def test_compare_cli_reads_jsonl_rows(tmp_path: Path) -> None:
     main(["compare", str(ref), str(cand), "--out", str(tmp_path / "c")])
     r = json.loads((tmp_path / "c" / "compare.json").read_text())
     assert r["tasks"] == 150 and r["verdict"] == "non-inferior"
+
+
+def test_vacuous_when_the_reference_rarely_succeeds_and_both_bounds_are_named():
+    from graduate.certify.session import compare
+
+    ref = {f"t{i}": [1.0 if i < 3 else 0.0] for i in range(30)}  # reference succeeds 10%
+    cand = {f"t{i}": [0.0] for i in range(30)}
+    r = compare(ref, cand, margin=0.10)
+    assert not r["non_vacuous"] and r["verdict"].startswith("vacuous")
+    ok = compare({f"t{i}": [1.0] for i in range(30)}, {f"t{i}": [1.0] for i in range(30)})
+    assert ok["non_vacuous"] and ok["binding"] in ("bootstrap", "exact")
+    assert {"regret_upper_bootstrap", "regret_upper_exact"} <= set(ok)

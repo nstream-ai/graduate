@@ -83,10 +83,10 @@ def _cluster_boot(diff, tasks, seed: int, n_boot: int = 5000):
 
 
 def states_needed(change_t: float, delta: float) -> int:
-    """States needed per slice: n >= max(3 / delta, 2.7 * change_T / delta^2), the exact zero-event
-    bound, or the one-sided normal bound under the null when the reference's own flips (change_T)
-    add variance; those flips are variance, not bias."""
-    return math.ceil(max(3 / delta, 2.7 * change_t / delta**2))
+    """States needed per slice at 80% power: n >= max(3 / delta, (1.645 + 0.84)^2 * change_T /
+    delta^2), the exact zero-event bound, or the one-sided normal bound when the reference's own
+    flips (change_T) add variance; those flips are variance, not bias."""
+    return math.ceil(max(3 / delta, Z_POWER**2 * change_t / delta**2))
 
 
 def slice_stats(pairs: list[dict], delta: float = 0.05, level: float = 0.05, seed: int = 0) -> dict:
@@ -117,8 +117,14 @@ def slice_stats(pairs: list[dict], delta: float = 0.05, level: float = 0.05, see
     # exact, state-level: given the d = worse + better discordant states,
     # worse ~ Binomial(d, q) and h = (d / n)(2q - 1); a Clopper-Pearson upper bound on q bounds h
     d = worse + better
-    exact_upper = (d / n) * (2 * clopper_pearson_upper(worse, d, level) - 1) if d else 0.0
+    # no discordant state: the harm is at most the discordance rate, whose exact zero-event bound
+    # is not 0
+    exact_upper = (
+        (d / n) * (2 * clopper_pearson_upper(worse, d, level) - 1) if d
+        else clopper_pearson_upper(0, n, level)
+    )  # fmt: skip
     upper = max(boot_upper, exact_upper)  # the stricter certifies
+    binding = "bootstrap" if boot_upper >= exact_upper else "exact"
     h_t_ci = (float(np.quantile(boot_t, 0.025)), float(np.quantile(boot_t, 0.975)))
     h_t, h_t_se = float((t1 - t2).mean()), float(boot_t.std())
     need = states_needed(ch_t / n, delta)
@@ -136,6 +142,7 @@ def slice_stats(pairs: list[dict], delta: float = 0.05, level: float = 0.05, see
         "harm_upper": upper,
         "harm_upper_bootstrap": boot_upper,
         "harm_upper_exact": exact_upper,
+        "binding": binding,
         # one-sided bootstrap p-value for H0: h >= delta (for BH across slices)
         "p_harm": float((1 + (boot >= delta).sum()) / (1 + boot.size)),
         "delta": delta,
@@ -164,7 +171,7 @@ def fork_card(
     session_margin: float = 0.10,
     cap: int = 2,
     level: float = 0.05,
-    min_states: int = 20,
+    min_states: int = 30,  # smaller slices stay out of the BH family (reported as untested)
     serving: dict | None = None,
 ) -> dict:
     """Card by the reference's logged slice and by the candidate's proposed slice (what a router

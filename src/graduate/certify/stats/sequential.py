@@ -90,7 +90,7 @@ def betting_mean_test(
 
     logs = np.stack([np.cumsum(np.log1p(-np.clip(raw, 0.0, lv / upper) * xs)) for lv in levels])
     log_cap = np.logaddexp.reduce(logs, axis=0) - np.log(len(levels))
-    capital = np.exp(log_cap)
+    capital = np.exp(np.minimum(log_cap, 700.0))  # beyond e^700 the p-value is 0 anyway
     return BettingTest(float(min(1.0, np.exp(-log_cap.max()))), capital, n)
 
 
@@ -237,8 +237,10 @@ def ratio_upper_bound(
     """Upper confidence bound on sum(num) / sum(den) over independent sessions.
 
     Inverts the anytime-valid betting test of H0: ratio >= r over a fine grid and
-    returns the smallest grid value r it certifies (rounded up to the grid, so
-    conservative). With num = errors and den = accepted calls this is the
+    returns the bound of the confidence set {r : p(r) > delta}: the grid value just
+    above its largest member (rounded up to the grid, so conservative). The bets and
+    priors change with r, so p(r) need not be monotone; scanning from the top keeps
+    the bound valid even where it is not. With num = errors and den = accepted calls this is the
     certificate's "per-call error <= U (1 - delta)". Valid for any within-session
     dependence, because sessions are the unit.
     """
@@ -248,15 +250,16 @@ def ratio_upper_bound(
         raise ValueError("num and den must be 1-D arrays of equal length")
     if (n < 0).any() or (n > d).any() or (d > cap).any():
         raise ValueError("need 0 <= num <= den <= cap per session")
-    for r in _BOUND_GRID[1:]:
-        if r >= 1.0:
-            return 1.0
+    grid = _BOUND_GRID[(_BOUND_GRID > 0.0) & (_BOUND_GRID < 1.0)]
+    bound = 1.0
+    for r in grid[::-1]:  # from the top: the first r not rejected is the set's largest member
         res = betting_mean_test(
             n - r * d, cap * (1.0 - r), c, prior_mean=-r / 2.0, prior_var=max(r, 1e-4)
         )
-        if res.pvalue <= delta:
-            return float(r)
-    return 1.0
+        if res.pvalue > delta:
+            return float(bound)
+        bound = float(r)
+    return float(bound)
 
 
 def ratio_confidence_interval(

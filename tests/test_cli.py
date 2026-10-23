@@ -288,3 +288,96 @@ def test_causes_table_prints_tool_names_not_python_lists() -> None:
                          "candidate": ["cancel_order"]}}]  # fmt: skip
     md = why_table(rows)
     assert "reference get_order, candidate cancel_order" in md and "['" not in md
+
+
+def test_reference_that_breaks_its_tool_contract_is_not_admissible(tmp_path: Path) -> None:
+    # the reference calls a tool that is not in the conversation's tool list in 1 of 3 sessions
+    rows = []
+    for i in range(150):
+        t = _trace(i)
+        if i % 3 == 0:
+            t["messages"][2]["tool_calls"][0]["function"]["name"] = "run_code"
+        rows.append(json.dumps(t))
+    traces = tmp_path / "t.jsonl"
+    traces.write_text("\n".join(rows))
+    server, url = _serve()
+    try:
+        _run(traces, tmp_path / "r", url)
+    finally:
+        server.shutdown()
+    card = json.loads((tmp_path / "r" / "card.json").read_text())
+    c = card["reference_contract"]
+    assert c["conversations_checked"] == 150 and c["violating_conversations"] == 50
+    assert not c["admissible"] and c["top_violations"][0][0] == "run_code"
+    assert card["certified_slices"] == [] and card["certified_call_share"] == 0.0
+    assert "Reference not admissible" in (tmp_path / "r" / "card.md").read_text()
+
+
+class StubTokenizer:
+    """Enough of a Hugging Face tokenizer for --prompt-mode completions, without a download."""
+
+    chat_template = "stub"
+    pad_token = "<pad>"
+
+    def apply_chat_template(self, messages, tools=None, **_kw):
+        return "".join(f"<{m['role']}>{m.get('content') or ''}" for m in messages) + "<assistant>"
+
+    def __call__(self, text, add_special_tokens=False):
+        return {"input_ids": list(range(len(text)))}
+
+
+class CompletionsCandidate(BaseHTTPRequestHandler):
+    """A /completions server that answers like Qwen3.5: an XML tool call for the order asked."""
+
+    def do_POST(self) -> None:
+        body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        assert self.path.endswith("/completions") and isinstance(body["prompt"], list)
+        assert body["max_tokens"] == 256 and body["temperature"] == 0.0
+        text = ("<tool_call>\n<function=get_order>\n<parameter=id>\n7\n</parameter>\n"
+                "</function>\n</tool_call>")  # fmt: skip
+        out = json.dumps({"choices": [{"text": text}]}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(out)
+
+    def log_message(self, *args) -> None:
+        pass
+
+
+def test_prompt_mode_completions_takes_the_research_path(tmp_path: Path, monkeypatch) -> None:
+    import graduate.cli as cli
+
+    monkeypatch.setattr(cli, "load_renderer", lambda tok, pt, ml: {
+        "tok": StubTokenizer(), "stop": [0], "prompt_tokens": pt, "max_len": ml})  # fmt: skip
+    traces = tmp_path / "t.jsonl"
+    traces.write_text(json.dumps(_trace(7)))
+    server = HTTPServer(("127.0.0.1", 0), CompletionsCandidate)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{server.server_port}/v1"
+    try:
+        _run(traces, tmp_path / "r", url, "qwen", "--prompt-mode", "completions")
+    finally:
+        server.shutdown()
+    card = json.loads((tmp_path / "r" / "card.json").read_text())
+    assert card["candidate_path"].startswith("completions")
+    assert "the paper's path" in (tmp_path / "r" / "card.md").read_text()
+    head = json.loads((tmp_path / "r" / "proposals.jsonl").read_text().splitlines()[0])
+    assert head["prompt_mode"] == "completions"  # its own cache: never mixed with chat answers
+    assert card["failed_requests"] == 0 and card["decision_split"]["agreement"] > 0
+
+
+def test_chat_and_completions_paths_parse_the_same_action() -> None:
+    # E4 measures divergence on real traffic; this pins that the parsers agree on one action
+    from graduate.core import ToolCall, action_of, agree
+    from graduate.prompting import parse_completion
+
+    chat_calls = [{"name": "get_order", "arguments": {"id": "7"}}]  # a chat server's tool_calls
+    text = (
+        "<tool_call>\n<function=get_order>\n<parameter=id>\n7\n</parameter>\n</function>\n"
+        "</tool_call>"
+    )
+    _, parsed = parse_completion(text, TOOLS)  # Qwen3.5 on /completions, read by Graduate
+    a = action_of([ToolCall(name=c["name"], arguments=c["arguments"]) for c in chat_calls])
+    b = action_of([ToolCall(name=c.name, arguments=c.arguments) for c in parsed])
+    assert agree(a, b, "args")

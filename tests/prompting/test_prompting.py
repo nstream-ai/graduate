@@ -86,3 +86,13 @@ def test_parse_completion_reads_qwen35_xml_calls_typed_by_schema() -> None:
     assert calls[0].name == "find_user_id_by_name_zip"
     assert calls[0].arguments == {"first_name": "Yusuf", "zip": "19122", "count": 3,
                                   "item_ids": ["1", "2"]}  # fmt: skip
+
+
+def test_thinking_opened_by_the_prompt_is_dropped_before_parsing():
+    # with enable_thinking the template opens <think> in the prompt: the reply has only the close
+    text = (
+        "the user wants order 7, look it up\n</think>\n\n<tool_call>\n<function=get_order>\n"
+        "<parameter=id>\n7\n</parameter>\n</function>\n</tool_call>"
+    )
+    reply, calls = parse_completion(text, QWEN35_TOOLS)
+    assert [c.name for c in calls] == ["get_order"] and "look it up" not in reply
