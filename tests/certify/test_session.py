@@ -20,7 +20,7 @@ def test_a_clearly_worse_candidate_is_not_non_inferior() -> None:
     ref = {f"t{i}": [1.0] for i in range(200)}
     cand = {f"t{i}": [0.0 if i % 2 else 1.0] for i in range(200)}  # 50 points worse
     r = compare(ref, cand, margin=0.10)
-    assert abs(r["regret"] - 0.5) < 1e-12 and r["verdict"] == "not non-inferior"
+    assert abs(r["regret"] - 0.5) < 1e-12 and r["verdict"].startswith("worse than the margin")
 
 
 def test_too_few_tasks_cannot_be_decided() -> None:

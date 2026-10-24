@@ -418,7 +418,7 @@ def candidate_path(args: Any) -> str:
         return (
             f"completions (Graduate renders {tok}'s chat template with thinking off, prompt "
             f"fitted to {args.prompt_tokens} tokens, {COMPLETION_TOKENS} new tokens, replies read "
-            "by graduate.prompting's parsers; the paper's path)"
+            "by graduate.prompting's parsers)"
         )
     return (
         "chat (the server's chat template and tool-call parser; not comparable to cards made "
@@ -482,13 +482,32 @@ def claim_b(args: Any, out: Path) -> None:
     """`graduate claim-b`: per-slice and per-session certificate by effect from fork rows."""
     from graduate.certify.fork import card_pairs, fork_card, routing_table
 
+    need = ("state", "branch", "task_id", "slice", "success")
     rows = []
     for path in args.forks.split(","):
-        with Path(path).open() as f:
-            rows += [json.loads(line) for line in f if line.strip()]
+        if not Path(path).is_file():
+            _fail(f"{path}: no such file")
+        for n, line in enumerate(Path(path).read_text().splitlines(), start=1):
+            if not line.strip():
+                continue
+            try:
+                r = json.loads(line)
+            except ValueError:
+                _fail(f"{path}, line {n}: not JSON")
+            miss = [k for k in need if k not in r] if isinstance(r, dict) else list(need)
+            if miss:
+                _fail(f"{path}, line {n}: missing {', '.join(miss)} (each row: {', '.join(need)}; "
+                      "branch is T1, T2 or S)")  # fmt: skip
+            rows.append(r)
+    try:
+        serving = json.loads(args.serving)
+    except ValueError:
+        _fail('--serving must be JSON, e.g. \'{"model": "ref"}\'')
     ns = argparse.Namespace(pool_positions=not args.by_position)
-    card = fork_card(card_pairs(rows, ns), session_margin=args.session_margin, cap=args.cap,
-                     serving=json.loads(args.serving))  # fmt: skip
+    pairs = card_pairs(rows, ns)
+    if not pairs:
+        _fail("no complete forks: a state needs all three branches (T1, T2 and S) with a success")
+    card = fork_card(pairs, session_margin=args.session_margin, cap=args.cap, serving=serving)
     card["routing"] = routing_table(card)
     (out / "claim_b.json").write_text(json.dumps(card, indent=2, default=str))
     d, f = card["delta_turn"], card.get("reference_floor") or {}
@@ -506,6 +525,15 @@ def claim_b(args: Any, out: Path) -> None:
                   f"{t['harm_upper_finite']:.1%} / {t['harm_upper_t']:.1%} / "
                   f"{t['harm_upper_bootstrap']:.1%} | {t['session_harm_upper']:.1%} | "
                   f"{t['detectable_harm']:.1%} | {t['verdict']} |")  # fmt: skip
+    if card["untested_proposed_slice"]:
+        md.append(f"\nUntested (fewer than 30 states, kept out of the multiple-comparison family): "
+                  f"{', '.join(card['untested_proposed_slice'])}.")  # fmt: skip
+    md.append("\nSlices are domain/kind/tool"
+              + (" with position buckets (--by-position)." if args.by_position
+                 else "; positions are pooled (--by-position keeps them).")
+              + " Never route: the harm is likely (above 0) and its upper bound exceeds half the "
+              "reference's own success on the slice, so the router refuses it; not certified: "
+              "the bound is above delta, without that evidence of harm.")  # fmt: skip
     md.append(f"\nComposition: {card['composition']}. Requires {card['requires']}.")
     md.append(f"\nCertified: {card['routing']['certified'] or 'none'}. "
               f"Never route: {card['routing']['never'] or 'none'}.")  # fmt: skip
@@ -527,8 +555,27 @@ def outcomes(path: str, outcome: str) -> list[tuple[str, bool]]:
                   else (info.get("reward") or 0) >= 1.0)  # fmt: skip
             out.append((str(s["task_id"]), ok))
         return out
-    rows = [json.loads(line) for line in text.splitlines() if line.strip()]
-    return [(str(r["task_id"]), bool(r["success"])) for r in rows if r.get("success") is not None]
+    rows = []
+    for n, line in enumerate(text.splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            rows.append((n, json.loads(line)))
+        except ValueError:
+            _fail(f"{path}, line {n}: not JSON")
+    out = []
+    for n, r in rows:
+        if not isinstance(r, dict) or "task_id" not in r or "success" not in r:
+            _fail(f"{path}, line {n}: each row needs task_id and success (got "
+                  f"{sorted(r) if isinstance(r, dict) else type(r).__name__})")  # fmt: skip
+        v = r["success"]
+        if v is None:
+            continue
+        if isinstance(v, bool) or (isinstance(v, int | float) and v in (0, 1)):
+            out.append((str(r["task_id"]), bool(v)))
+        else:  # "yes" / "false" would otherwise read as true
+            _fail(f"{path}, line {n}: success must be true/false or 0/1, got {v!r}")
+    return out
 
 
 def compare_cmd(args: Any, out: Path) -> None:
@@ -539,19 +586,26 @@ def compare_cmd(args: Any, out: Path) -> None:
                 per_task(outcomes(args.candidate, args.outcome)), margin=args.margin)  # fmt: skip
     (out / "compare.json").write_text(json.dumps(r, indent=2))
     if not r["tasks"]:
-        print("no paired tasks")
-        return
+        _fail("no paired tasks: the two files share no task_id (rows need task_id and success)")
+    unpaired = r["tasks_only_reference"] + r["tasks_only_candidate"]
+    if unpaired:
+        print(f"warning: {r['tasks_only_reference']} tasks only in the reference file and "
+              f"{r['tasks_only_candidate']} only in the candidate file are left out (not paired)",
+              file=sys.stderr)  # fmt: skip
     text = (f"# Session-level comparison: {r['tasks']} paired tasks\n\n"
             f"Reference success {r['reference_success']:.1%}, candidate "
             f"{r['candidate_success']:.1%}. Regret {r['regret']:+.1%} (one-sided 95% upper bound "
             f"{r['regret_upper']:+.1%}; candidate worse on {r['tasks_worse']} tasks, better on "
             f"{r['tasks_better']}). Smallest regret this evidence could detect: "
-            f"{r['detectable_regret']:.1%}. Bounds: finite-sample {r['regret_upper_finite']:+.1%} "
+            f"{r['detectable_regret']:.1%}. Bounds: finite-sample upper "
+            f"{r['regret_upper_finite']:+.1%} and lower {r['regret_lower_finite']:+.1%} "
             f"(decides), t {r['regret_upper_t']:+.1%} (asymptotic), bootstrap "
             f"{r['regret_upper_bootstrap']:+.1%}. Non-vacuity: the "
             f"reference succeeds {r['reference_success']:.0%} "
             f"({'at least' if r['non_vacuous'] else 'below'} 2 x margin).\n\n**{r['verdict']}** "
-            f"at a margin of {r['margin']:.0%}.\n")  # fmt: skip
+            f"at a margin of {r['margin']:.0%}.\n"
+            + (f"\n{unpaired} tasks were in one file only and are left out.\n" if unpaired
+               else ""))  # fmt: skip
     (out / "compare.md").write_text(text)
     print(text)
 
@@ -567,7 +621,11 @@ fraction of all calls. GRADUATED = certified at alpha: a router may send this sl
 candidate. "-" = not certified; "not enough evidence" says how many more conversations a
 slice would likely need at its observed rate. "Will not help" means the same betting test,
 mirrored (H0: disagreement <= alpha), rejects on the capped per-conversation counts; it is
-anytime-valid, so rerunning as conversations arrive does not inflate it.
+anytime-valid, so rerunning as conversations arrive does not inflate it. Text-reply slices read
+"decision only (wording unchecked)": agreement there is on the decision to reply, not on the
+reply's wording, so they stay out of the certified share unless --certify-text-slices. "held:
+reference noise" = the reference disagrees with itself on the slice at or above alpha
+(--reference-base-url), so no candidate can certify it by agreement.
 """
 
 
@@ -660,7 +718,7 @@ def main(argv: list[str] | None = None) -> None:
         default="chat",
         help="chat: the server's chat template and tool parser (Ollama, vLLM, any "
         "OpenAI-compatible server); completions: Graduate renders the model's chat template "
-        "(thinking off), calls /completions and parses the reply itself, as the paper does",
+        "(thinking off), calls /completions and parses the reply itself",
     )
     c.add_argument(
         "--tokenizer", default=None, help="completions mode: tokenizer id (default: --model)"
@@ -681,21 +739,25 @@ def main(argv: list[str] | None = None) -> None:
     )
     b = sub.add_parser(
         "claim-b",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
         help="certify by effect from fork outcomes (needs an environment that can be reset to a "
         "logged state)",
     )
     b.add_argument("forks", help="comma-separated JSONL files of fork rows (T1, T2, S branches)")
-    b.add_argument("--session-margin", type=float, default=0.10, help="harm allowed per session")
+    b.add_argument("--session-margin", type=_fraction, default=0.10,
+                   help="harm allowed per session, a fraction (0.10 = 10 points)")  # fmt: skip
     b.add_argument(
         "--cap", type=int, default=1, help="routed turns per session (delta = margin/cap)"
     )
     b.add_argument("--by-position", action="store_true", help="keep position buckets in slices")
     b.add_argument("--serving", default="{}", help="JSON: the reference's serving configuration")
     b.add_argument("--out", default="graduate-claim-b")
-    m = sub.add_parser("compare", help="session level: candidate vs reference on the same tasks")
+    m = sub.add_parser("compare", help="session level: candidate vs reference on the same tasks",
+                       formatter_class=argparse.ArgumentDefaultsHelpFormatter)  # fmt: skip
     m.add_argument("reference", help="JSONL of {task_id, success} rows (or a tau2 results.json)")
     m.add_argument("candidate", help="the same for the candidate or the hybrid")
-    m.add_argument("--margin", type=float, default=0.10, help="allowed regret per session")
+    m.add_argument("--margin", type=_fraction, default=0.10,
+                   help="allowed regret per session, a fraction (0.10 = 10 points)")  # fmt: skip
     m.add_argument("--outcome", choices=["reward", "db"], default="reward",
                    help="tau2 results: full reward or database end state")  # fmt: skip
     m.add_argument("--out", default="graduate-compare")

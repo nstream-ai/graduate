@@ -3,6 +3,30 @@
 All notable changes to this project are listed here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-10-24
+
+Fixes from a new-user walkthrough of `compare` and `claim-b`.
+
+- `compare`: `success` must be `true`/`false` or `0`/`1`. A string such as `"yes"` or `"false"`
+  used to count as true; it now stops with an error naming the file and line. Rows without
+  `task_id` and `success`, or two files with no task in common, stop with an error instead of
+  "no paired tasks" and a successful exit.
+- `compare`: "worse than the margin" when the lower bound on the regret (the same finite-sample
+  bound, other side) is above the margin, so a clearly worse candidate is no longer "cannot be
+  decided". The verdict that read "not non-inferior" now reads "non-inferiority not shown (not
+  proven worse)". Tasks in only one file are counted and reported, not dropped silently.
+- `claim-b`: a missing file, a row missing a field (`state`, `branch`, `task_id`, `slice`,
+  `success`), bad `--serving` JSON, or input with no complete fork (T1, T2 and S) stops with a
+  message instead of a Python error or an empty card. The card lists untested slices (fewer than
+  30 states), says how slices are named (positions pooled unless `--by-position`), and explains
+  never route against not certified.
+- `--margin` and `--session-margin` must be fractions in (0, 1): `10` is rejected instead of
+  read as 1000%. `--help` for `claim-b` and `compare` shows defaults.
+- `certify`: the card legend explains "decision only (wording unchecked)" and "held: reference
+  noise"; the README documents `--certify-text-slices`, `--prompt-mode` and the harmony format.
+- `import graduate.train` raises an error that names the new path, `graduate.prompting`.
+- `--help` no longer refers to a paper that is not yet public.
+
 ## [0.2.0] - 2026-10-23
 
 Certification by effect and session-level comparison: the methods the paper uses.

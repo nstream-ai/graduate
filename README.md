@@ -131,12 +131,18 @@ For each slice of the candidate's proposals, the card reports:
 - the **signed net harm**: sessions the candidate's turn made worse minus sessions it made
   better, per routed turn, with a one-sided finite-sample upper bound with tasks as the unit (a betting bound; a
   task-cluster t bound and a bootstrap bound are printed for information only);
-- **never route**: harm is likely and could be large, so the router always sends it to the
-  reference;
+- **never route**: the harm is likely (above 0) and its upper bound exceeds half the reference's
+  own success on the slice, so the router always sends it to the reference. "Not certified"
+  means the bound is above delta without that evidence of harm;
 - **vacuous**: the reference itself rarely succeeds there, so "no harm" means nothing;
 - the **smallest harm this evidence could detect**: "cannot be decided with this evidence" is
   not a failure;
 - the **reference's noise floor**: how often T1 and T2 end differently.
+
+Slices with fewer than 30 states are listed as untested and kept out of the multiple-comparison
+family. Slices are named domain/kind/tool: positions in the conversation are pooled unless
+`--by-position`. Each input row needs `state`, `branch` (`T1`, `T2` or `S`), `task_id`, `slice`
+and `success`; a row missing a field, or input with no complete fork, stops with an error.
 
 **Two labels on every card:**
 - *Composition:* the per-session bound is the union bound over at most `cap` routed turns
@@ -146,6 +152,14 @@ For each slice of the candidate's proposals, the card reports:
   research, not used here.
 - *Requires:* an environment that can be reset to a logged state. Without one, use
   `graduate certify` (agreement) and `graduate compare` (whole sessions).
+
+**Text replies and noisy slices.** A text-reply slice agrees on the decision to reply, not on
+the reply's wording, so it reads "decision only (wording unchecked)" and stays out of the
+certified share; `--certify-text-slices` counts it. With `--reference-base-url` the reference is
+re-asked on a sample of states, and a slice where it disagrees with itself at or above alpha reads
+"held: reference noise". `--prompt-mode completions` renders the candidate's prompt from its own
+chat template and parses the reply with `graduate.prompting` (Qwen, Gemma and the harmony format
+of gpt-oss models); `chat`, the default, uses the server's template and tool parser.
 
 ## Compare whole sessions: `graduate compare`
 
@@ -157,9 +171,13 @@ Input: `{"task_id", "success"}` lines, or τ²-bench `results.json` files (`--ou
 database end state, `reward` for the full reward; infrastructure errors are left out). The report
 gives the paired regret (reference success − candidate success), with a one-sided 95% upper bound
 from a finite-sample betting bound with tasks as the unit (t and bootstrap bounds printed for
-information), and the smallest regret the evidence could detect. The verdict is "non-inferior", "not non-inferior", or "cannot be decided
-with this evidence" when the task count is too small for the margin (a few dozen tasks rarely
-resolve 10 points).
+information), a lower bound from the same test, and the smallest regret the evidence could
+detect. Verdicts: "non-inferior"; "worse than the margin" when even the lower bound is above it;
+"non-inferiority not shown (not proven worse)"; "cannot be decided with this evidence" when the
+task count is too small for the margin (fewer than 3 / margin tasks, and a few dozen tasks rarely
+resolve 10 points); "vacuous" when the reference itself succeeds on less than twice the margin.
+`success` must be `true`/`false` or `0`/`1`; other values stop with an error. Tasks in only one
+file are left out and counted. `--margin` is a fraction (0.10 = 10 points).
 
 ## How the certificate works
 
