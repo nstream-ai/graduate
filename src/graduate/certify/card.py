@@ -212,8 +212,8 @@ class ReportCard:
                     )
                 else:
                     verdict += (
-                        f"  [cannot be decided with this evidence: disagreement {r.rate:.0%} is "
-                        f"not significantly above alpha {a:g}]"
+                        f"  [cannot be decided with this evidence: disagreement {r.rate:.0%} on "
+                        f"{r.sessions} conversations, too few to show it is above alpha {a:g}]"
                     )
             detect = 3 / r.sessions if r.sessions else 1.0  # smallest rate n can rule out
             rows.append(

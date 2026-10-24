@@ -514,7 +514,8 @@ def claim_b(args: Any, out: Path) -> None:
     md = [f"# Claim B by effect: {card['n_states']:,} forked states",
           f"\nPer routed turn: signed net harm <= {d:.1%} (session margin "
           f"{args.session_margin:.0%} / cap {args.cap}); per session <= {args.session_margin:.0%}."
-          f" Reference self-noise floor: h_T {f.get('h_T', float('nan')):+.1%}, flips "
+          " Reference self-noise floor (T1 vs T2, the reference against itself):"
+          f" h_T {f.get('h_T', float('nan')):+.1%}, flips "
           f"{f.get('change_T', float('nan')):.1%}.",
           "\n| candidate proposes | states (tasks) | reference success | net harm (upper) | "
           "finite-sample / t / bootstrap | session harm (upper) | detectable harm | verdict |",
@@ -694,7 +695,12 @@ def main(argv: list[str] | None = None) -> None:
         "scales with 1/cap: keep it near the calls a conversation really has)",
     )
     c.add_argument("--limit", type=int, default=None, help="first N conversations only")
-    c.add_argument("--concurrency", type=int, default=8, help="parallel requests")
+    c.add_argument(
+        "--concurrency",
+        type=int,
+        default=8,
+        help="parallel requests (8 suits a server; use 1 on a laptop)",
+    )
     c.add_argument(
         "--certify-text-slices",
         action="store_true",

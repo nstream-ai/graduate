@@ -63,6 +63,8 @@ The methods Graduate implements, and the work it builds on.
 - Qwen Team (2024). Qwen2.5 technical report. arXiv:2412.15115.
 - Yang, A. et al. (2025). Qwen3 technical report. arXiv:2505.09388.
 - Google DeepMind (2026). Gemma 4 (Apache-2.0). ai.google.dev/gemma.
+- OpenAI (2025). gpt-oss and the harmony response format. github.com/openai/harmony;
+  cookbook.openai.com/articles/openai-harmony
 - Kwon, W. et al. (2023). Efficient memory management for large language model serving with
   PagedAttention (vLLM). SOSP. arXiv:2309.06180.
 
