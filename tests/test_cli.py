@@ -363,7 +363,7 @@ def test_prompt_mode_completions_takes_the_research_path(tmp_path: Path, monkeyp
         server.shutdown()
     card = json.loads((tmp_path / "r" / "card.json").read_text())
     assert card["candidate_path"].startswith("completions")
-    assert "the paper's path" in (tmp_path / "r" / "card.md").read_text()
+    assert "graduate.prompting's parsers" in (tmp_path / "r" / "card.md").read_text()
     head = json.loads((tmp_path / "r" / "proposals.jsonl").read_text().splitlines()[0])
     assert head["prompt_mode"] == "completions"  # its own cache: never mixed with chat answers
     assert card["failed_requests"] == 0 and card["decision_split"]["agreement"] > 0
@@ -416,3 +416,63 @@ def test_noisy_reference_slices_are_held_and_stay_visible() -> None:
     card = SimpleNamespace(slices=[r], alphas={"disagree": 0.05})
     out = slice_verdicts(card, 0.05, noisy={r.slice})
     assert out[0]["verdict"].startswith("held: reference noise")
+
+
+def _jsonl(path: Path, rows: list) -> str:
+    path.write_text("\n".join(json.dumps(r) for r in rows))
+    return str(path)
+
+
+def test_compare_rejects_success_strings(tmp_path: Path, capsys) -> None:
+    ref = _jsonl(tmp_path / "r.jsonl", [{"task_id": i, "success": True} for i in range(40)])
+    cand = _jsonl(tmp_path / "c.jsonl", [{"task_id": i, "success": "yes"} for i in range(40)])
+    with pytest.raises(SystemExit) as e:
+        main(["compare", ref, cand, "--out", str(tmp_path / "o")])
+    assert e.value.code == 2 and "true/false or 0/1" in capsys.readouterr().err
+
+
+def test_compare_wrong_fields_and_no_pairs_fail(tmp_path: Path, capsys) -> None:
+    bad = _jsonl(tmp_path / "b.jsonl", [{"id": 1, "ok": True}])
+    ref = _jsonl(tmp_path / "r.jsonl", [{"task_id": "a", "success": 1}])
+    other = _jsonl(tmp_path / "x.jsonl", [{"task_id": "z", "success": 1}])
+    with pytest.raises(SystemExit):
+        main(["compare", ref, bad, "--out", str(tmp_path / "o")])
+    assert "needs task_id and success" in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        main(["compare", ref, other, "--out", str(tmp_path / "o")])
+    assert "no paired tasks" in capsys.readouterr().err
+
+
+def test_compare_counts_unpaired_tasks_and_names_a_worse_candidate(tmp_path: Path, capsys) -> None:
+    ref = _jsonl(tmp_path / "r.jsonl", [{"task_id": i, "success": i % 5 != 0} for i in range(42)])
+    cand = _jsonl(tmp_path / "c.jsonl", [{"task_id": i, "success": i % 5 == 0} for i in range(40)])
+    main(["compare", ref, cand, "--out", str(tmp_path / "o")])
+    r = json.loads((tmp_path / "o" / "compare.json").read_text())
+    assert r["tasks_only_reference"] == 2 and "left out" in capsys.readouterr().err
+    assert r["verdict"].startswith("worse than the margin")
+
+
+def test_margins_are_fractions(tmp_path: Path) -> None:
+    ref = _jsonl(tmp_path / "r.jsonl", [{"task_id": 1, "success": 1}])
+    with pytest.raises(SystemExit):
+        main(["compare", ref, ref, "--margin", "10", "--out", str(tmp_path / "o")])
+
+
+def test_claim_b_bad_input_says_what_is_wrong(tmp_path: Path, capsys) -> None:
+    with pytest.raises(SystemExit):
+        main(["claim-b", str(tmp_path / "missing.jsonl"), "--out", str(tmp_path / "o")])
+    assert "no such file" in capsys.readouterr().err
+    f = _jsonl(tmp_path / "f.jsonl", [{"state": "s", "branch": "T1", "task_id": "t"}])
+    with pytest.raises(SystemExit):
+        main(["claim-b", f, "--out", str(tmp_path / "o")])
+    assert "missing slice, success" in capsys.readouterr().err
+    row = {"state": "s", "branch": "T1", "task_id": "t", "slice": "r/tool/a/1", "success": True}
+    g = _jsonl(tmp_path / "g.jsonl", [row])
+    with pytest.raises(SystemExit):
+        main(["claim-b", g, "--out", str(tmp_path / "o")])
+    assert "no complete forks" in capsys.readouterr().err
+
+
+def test_v01_import_path_says_it_was_renamed() -> None:
+    with pytest.raises(ImportError, match=r"renamed graduate\.prompting"):
+        import graduate.train  # noqa: F401
