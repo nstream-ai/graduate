@@ -3,6 +3,16 @@
 All notable changes to this project are listed here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.2] - 2026-10-24
+
+### Changed
+- README: starting the Ollama server, exact model tags, laptop settings and measured speeds, and
+  how to compare two candidates' cards.
+- Report card: a high disagreement rate on too few conversations says so instead of "not
+  significantly above alpha". The claim-b card says what h_T is.
+- `--concurrency` help suggests 1 on a laptop. The site says how sessions are split without
+  timestamps. REFERENCES lists the harmony format.
+
 ## [0.2.1] - 2026-10-24
 
 Fixes from a new-user walkthrough of `compare` and `claim-b`.

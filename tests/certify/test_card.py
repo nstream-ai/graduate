@@ -186,7 +186,7 @@ def _one_slice(wrong: int, n: int):
 
 def test_more_conversations_will_not_help_only_when_significantly_above_alpha():
     thin = _one_slice(1, 5).render()  # observed 20%, but the true rate may well be under 5%
-    assert "will not help" not in thin and "not significantly above" in thin
+    assert "will not help" not in thin and "too few to show it is above" in thin
     clear = _one_slice(20, 20).render()  # 20 of 20: the lower bound is far above 5%
     assert "will not help" in clear
 

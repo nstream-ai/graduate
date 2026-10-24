@@ -27,14 +27,24 @@ python examples/mock_candidate.py &
 graduate certify examples/traces.jsonl --base-url http://localhost:8000/v1 --model mock --out report/
 ```
 
-Then point it at a real candidate behind any OpenAI-compatible endpoint. A small model on your
-CPU works: with [Ollama](https://ollama.com), `ollama pull <model>` and use
-`--base-url http://localhost:11434/v1 --model <model>`. `examples/README.md` also covers
-llama.cpp. On your own traces:
+Then point it at a real candidate behind any OpenAI-compatible endpoint. A small model on a
+laptop works: with [Ollama](https://ollama.com), start the server (`brew services start ollama`
+on macOS, or `ollama serve`), `ollama pull qwen3:0.6b` and use
+`--base-url http://localhost:11434/v1 --model qwen3:0.6b`. `--model` must match the pulled tag
+exactly (`qwen3:0.6b`, not `qwen3`). `examples/README.md` also covers llama.cpp. On your own traces:
 
 ```bash
 graduate certify traces.jsonl --preset openai --base-url http://localhost:11434/v1 --model <model> --out report/
 ```
+
+Laptop settings: `--concurrency 1` (the default, 8, is for a server), one model loaded at a time,
+and `ollama stop <model>` between runs. Measured on an 8 GB M2 (Apple GPU, through Ollama):
+a 0.6B model takes about 0.6 s per call; a 4B model about 13 s per call at about 85% memory.
+Size runs by calls: a 1,000-call file at 13 s per call is close to four hours.
+
+To compare two candidates, run `certify` once per candidate into separate folders and compare the
+cards slice by slice (the held-out calls are the same). `graduate compare` is for task-success
+files (one `{"task_id", "success"}` row per task), not for report cards.
 
 `traces.jsonl` holds one conversation per line in the OpenAI chat format
 (`{"id": ..., "messages": [...], "tools": [...]}`, with the reference model's `tool_calls` and
@@ -67,7 +77,8 @@ You get, in `report/`:
 `card.md` ends with a legend for the table. A slice that is not certified for lack of evidence
 gives a range of how many more conversations it would need; a slice whose disagreement is
 significantly above alpha (its lower bound reaches alpha) says that more conversations will not
-help. "Why slices disagree" gives one cause per
+help. A high rate on a few conversations (say 100% on 3) is not yet shown to be above alpha: the
+card says there are too few conversations to tell. "Why slices disagree" gives one cause per
 disagreeing call and an example with its values redacted.
 
 ## Terms
