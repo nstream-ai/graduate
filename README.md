@@ -18,13 +18,25 @@ Website: https://nstream-ai.github.io/graduate/ (experiments overview at `/grid/
 
 ## Quick start
 
-Requires Python 3.12 or later.
+Requires Python 3.12 or later (CI tests 3.12, 3.13 and 3.14). Install into a virtual
+environment (Homebrew and most Linux Pythons refuse a global `pip install`, and macOS has
+`python3`, not `python`):
 
 ```bash
+python3 -m venv .venv && source .venv/bin/activate
 pip install graduate
 ```
 
-See a report card in seconds, with a stand-in candidate and no model (from a clone of this repo):
+Until the first PyPI release is out, or to run the examples, install from a clone instead:
+
+```bash
+git clone https://github.com/nstream-ai/graduate && cd graduate
+python3 -m venv .venv && source .venv/bin/activate
+pip install .
+```
+
+See a report card in seconds, with a stand-in candidate and no model (from the clone, with the
+virtual environment active):
 
 ```bash
 python examples/mock_candidate.py &
@@ -42,12 +54,30 @@ graduate certify traces.jsonl --preset openai --base-url http://localhost:11434/
 ```
 
 Laptop settings: `--concurrency 1` (the default, 8, is for a server), one model loaded at a time,
-and `ollama stop <model>` between runs. Measured on an 8 GB M2 (Apple GPU, through Ollama):
-a 0.6B model takes about 0.6 s per call; a 4B model about 13 s per call at about 85% memory.
-Size runs by calls: a 1,000-call file at 13 s per call is close to four hours.
+and unload it after every run, including between reruns of the same model: Ollama keeps a model
+loaded for 5 minutes, so run `ollama stop <model>` or start the server with
+`OLLAMA_KEEP_ALIVE=0`. Measured on an 8 GB M2 (Apple GPU, through Ollama): a 0.6B model takes
+about 0.6 s per call and a 2B model about 4 s; both fit. A 4B model (about 13 s per call) is at
+the limit of 8 GB: with other apps open, free memory fell to 9% on a longer conversation. On
+8 GB, compare models of 2B or less, close other apps, and watch memory (Activity Monitor);
+stop the run if it runs low, since a rerun reuses the cached answers. Size runs by calls: a
+1,000-call file at 13 s per call is close to four hours. Disk: each model is a download of a
+few GB (`qwen3.5:2b` 3.1 GB, `qwen3.5:4b` 4.0 GB); `ollama rm <model>` when done.
 
-To compare two candidates, run `certify` once per candidate into separate folders and compare the
-cards slice by slice (the held-out calls are the same). `graduate compare` is for task-success
+Thinking models (Qwen3 and Qwen3.5 think by default): the default `--prompt-mode chat` sends the
+server's defaults, so the model may think before answering. Graduate reads only the final
+answer and tool calls, but thinking is slower and counts against the 1,024-token reply budget.
+`--prompt-mode completions` renders the model's chat template with thinking off (it sends
+token ids to `/completions`, which vLLM accepts; on Ollama, use a model tag without thinking). Context: each
+call sends the conversation so far; Ollama's default context (4,096 tokens) is enough for the
+examples, and longer traces need a larger one (`OLLAMA_CONTEXT_LENGTH`), or Ollama silently
+drops the start of the conversation.
+
+To compare two candidates, run `certify` once per candidate into separate folders on the same
+traces file with the same options (`--limit` included, so both cards cover the same
+conversations) and compare the cards slice by slice. There is no command that diffs two cards.
+A stopped run leaves `card.md` saying so (the previous card is kept as `previous-card.md`);
+rerun the same command to finish it. `graduate compare` is for task-success
 files (one `{"task_id", "success"}` row per task), not for report cards.
 
 `traces.jsonl` holds one conversation per line in the OpenAI chat format

@@ -14,6 +14,13 @@ All notable changes to this project are listed here. Versions follow
 ### Changed
 - README: starting the Ollama server, exact model tags, laptop settings and measured speeds, and
   how to compare two candidates' cards.
+- README: install into a virtual environment, or from a clone before the PyPI release; laptop
+  memory (a 4B model is at the limit of 8 GB), disk, keep-alive and thinking models; both cards
+  of a comparison must cover the same conversations.
+- Report card: a `counted` column (the calls the test uses, inside the per-conversation cap);
+  `detect` reads "-" under 3 conversations instead of a value above 1. `certify` says how many
+  cached answers it reuses, and a stopped run leaves `card.md` saying so (the previous card is
+  kept as `previous-card.md`). CI also tests Python 3.14.
 - Report card: a high disagreement rate on too few conversations says so instead of "not
   significantly above alpha". The claim-b card says what h_T is.
 - `--concurrency` help suggests 1 on a laptop. The site says how sessions are split without
