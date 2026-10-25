@@ -190,7 +190,9 @@ class ReportCard:
     def alpha(self) -> float:
         return min(self.alphas.values())
 
-    def render(self, top: int = 25) -> str:
+    def render(self, top: int = 25, labels: dict[str, str] | None = None) -> str:
+        """`labels` replaces the verdict of the slices it names (e.g. text slices: "decision
+        only (wording unchecked)")."""
         multi = len(self.alphas) > 1
         head = (
             f"{'slice':<52}{'cap':>4}{'sess':>6}{'calls':>7}{'counted':>8}{'rate':>7}{'upper':>7}"
@@ -199,7 +201,9 @@ class ReportCard:
         rows = [head]
         for r in sorted(self.slices, key=lambda r: -r.calls)[:top]:
             verdict = "GRADUATED" if r.certified else "-"
-            if multi and not r.certified:
+            if labels and r.slice in labels:
+                verdict = labels[r.slice]
+            elif multi and not r.certified:
                 verdict += f"  (binding: {r.binding})"
             if r.plan:
                 verdict += f"  [{plan_text(r.plan)}]"

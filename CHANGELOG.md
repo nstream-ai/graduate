@@ -12,6 +12,13 @@ All notable changes to this project are listed here. Versions follow
   (`Documentation` URL, README badges); the docs link back to PyPI and GitHub.
 
 ### Changed
+- README rewritten shorter, with a logo, a table of what the card says and what to do, a commands
+  table and a BibTeX citation; install from a clone first. The details moved to two new
+  documentation pages: the guide and "Run on a laptop" (corrected: a 4B model does not fit in
+  8 GB; keep Ollama's keep-alive during a run and `ollama stop` after it; Qwen3.5 has no tag
+  without thinking; Graduate asks at temperature 0). `examples/README.md` points there.
+- Report card: the table shows "decision only (wording unchecked)" and "held: reference noise"
+  where they apply, not "-".
 - README: starting the Ollama server, exact model tags, laptop settings and measured speeds, and
   how to compare two candidates' cards.
 - README: install into a virtual environment, or from a clone before the PyPI release; laptop

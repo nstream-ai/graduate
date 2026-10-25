@@ -128,6 +128,8 @@ def test_certify_end_to_end(tmp_path: Path) -> None:
     assert card["decision_split"]["replied_instead_of_acting"] == 0.0
     assert 0.0 < card["certified_call_share"] < 1.0
     assert "not compared" in (out / "card.md").read_text()
+    table = (out / "card.md").read_text().split("How to read")[0]
+    assert "decision only (wording unchecked)" in table  # text slices say so in the table too
     verdicts = {r["slice"]: r["verdict"] for r in card["slices"]}
     assert all(v == ("decision only (wording unchecked)" if "text" in k else "certified")
                for k, v in verdicts.items())  # fmt: skip
