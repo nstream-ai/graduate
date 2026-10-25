@@ -3,7 +3,13 @@
 All notable changes to this project are listed here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [0.2.2] - 2026-10-24
+## [0.2.2] - 2026-10-25
+
+### Added
+- Published on PyPI: `pip install graduate` (0.2.1 is published too). Releases are built and
+  uploaded by `.github/workflows/release.yml` with Trusted Publishing.
+- Documentation on Read the Docs, https://graduate.readthedocs.io/, linked from the PyPI page
+  (`Documentation` URL, README badges); the docs link back to PyPI and GitHub.
 
 ### Changed
 - README: starting the Ollama server, exact model tags, laptop settings and measured speeds, and
