@@ -29,6 +29,7 @@ dev = ["pytest>=8", "hypothesis>=6", "ruff>=0.6"]
 
 [project.urls]
 Homepage = "https://nstream-ai.github.io/graduate/"
+Documentation = "https://graduate.readthedocs.io/"
 Repository = "https://github.com/nstream-ai/graduate"
 Issues = "https://github.com/nstream-ai/graduate/issues"
 Changelog = "https://github.com/nstream-ai/graduate/blob/main/CHANGELOG.md"

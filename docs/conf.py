@@ -21,3 +21,12 @@ autodoc_typehints = "description"
 
 html_theme = "furo"
 html_title = f"Graduate {release}"
+html_theme_options = {
+    "source_repository": "https://github.com/nstream-ai/graduate/",
+    "source_branch": "main",
+    "source_directory": "docs/",
+    "footer_icons": [
+        {"name": "PyPI", "url": "https://pypi.org/project/graduate/", "html": "PyPI"},
+        {"name": "GitHub", "url": "https://github.com/nstream-ai/graduate", "html": "GitHub"},
+    ],
+}

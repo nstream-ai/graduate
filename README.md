@@ -1,5 +1,8 @@
 # Graduate
 
+[![PyPI](https://img.shields.io/pypi/v/graduate)](https://pypi.org/project/graduate/)
+[![Documentation](https://readthedocs.org/projects/graduate/badge/?version=latest)](https://graduate.readthedocs.io/)
+
 **Find out which of your agent's calls a cheaper model can take over — with proof.**
 
 Your agent asks its model many small questions per conversation: which tool to call, with which
@@ -10,6 +13,7 @@ and gives back a **report card**: the slices of traffic the candidate is certifi
 a statistical bound that holds for real agent traffic (calls linked within a conversation, many
 slices tested at once, small samples). Use them as a cascade: the candidate answers each turn, its answer is kept when it falls in a certified slice, and the reference answers otherwise. The cascade pays for a candidate call on every turn and adds latency on the turns it escalates.
 
+Documentation: https://graduate.readthedocs.io/ · Package: https://pypi.org/project/graduate/ ·
 Website: https://nstream-ai.github.io/graduate/ (experiments overview at `/grid/`)
 
 ## Quick start
@@ -17,7 +21,7 @@ Website: https://nstream-ai.github.io/graduate/ (experiments overview at `/grid/
 Requires Python 3.12 or later.
 
 ```bash
-pip install "git+https://github.com/nstream-ai/graduate.git"
+pip install graduate
 ```
 
 See a report card in seconds, with a stand-in candidate and no model (from a clone of this repo):
@@ -49,7 +53,7 @@ files (one `{"task_id", "success"}` row per task), not for report cards.
 `traces.jsonl` holds one conversation per line in the OpenAI chat format
 (`{"id": ..., "messages": [...], "tools": [...]}`, with the reference model's `tool_calls` and
 the tool results). Other formats: see [Trace formats](#trace-formats). Parquet input needs
-`pip install "graduate[parquet] @ git+https://github.com/nstream-ai/graduate.git"`.
+`pip install "graduate[parquet]"`.
 
 **API keys.** No key is sent unless you pass `--api-key-env NAME` (the environment variable
 holding the candidate endpoint's key; `--reference-api-key-env` for the reference). A local
