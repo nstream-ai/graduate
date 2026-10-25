@@ -11,6 +11,7 @@ Failure types (a call can have several):
   extra_field      an argument the reference did not send ("hallucinated field")
   wrong_value      a shared argument has a different (normalized) value
   unparsed         arguments could not be parsed on either side
+
 Calls are paired by tool name (parallel calls are a multiset); unpaired calls count as
 wrong_tool.
 """

@@ -245,3 +245,5 @@ The core needs only NumPy, SciPy and Pydantic. Licence: Apache-2.0 (third-party 
 
 `index.html` and `grid/` (the experiments overview) are the website, published with GitHub Pages from the `main` branch;
 `src/graduate` is the package.
+`docs/` is the documentation site built on Read the Docs (`.readthedocs.yaml`); build it locally
+with `pip install -r docs/requirements.txt . && sphinx-build -W docs docs/_build`.
