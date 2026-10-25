@@ -1,3 +1,5 @@
+# Graduate
+
 ```{include} ../README.md
 ```
 
@@ -5,6 +7,8 @@
 :hidden:
 :maxdepth: 2
 
+guide
+laptop
 examples
 api
 changelog

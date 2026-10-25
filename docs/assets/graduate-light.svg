@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="64" viewBox="0 0 128 32" role="img" aria-label="Graduate">
+  <g fill="none" stroke="#17181b" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="3" width="26" height="26" rx="6.5" stroke-width="2.2"/>
+    <path d="M9.5 16.5l4.3 4.3 8.7-9.8" stroke-width="2.6"/>
+  </g>
+  <text x="38" y="23.2" fill="#17181b" font-family="Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="20" font-weight="700" letter-spacing="-0.2">Graduate</text>
+</svg>

@@ -1,33 +1,36 @@
-# Graduate
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/nstream-ai/graduate/main/docs/assets/graduate-dark.svg">
+    <img alt="Graduate" src="https://raw.githubusercontent.com/nstream-ai/graduate/main/docs/assets/graduate-light.svg" width="256">
+  </picture>
+</p>
 
-[![PyPI](https://img.shields.io/pypi/v/graduate)](https://pypi.org/project/graduate/)
-[![Documentation](https://readthedocs.org/projects/graduate/badge/?version=latest)](https://graduate.readthedocs.io/)
+<p align="center"><b>Find out which of your agent's calls a cheaper model can take over, with proof.</b></p>
 
-**Find out which of your agent's calls a cheaper model can take over — with proof.**
+<p align="center">
+  <a href="https://nstream-ai.github.io/graduate/">Website</a> ·
+  <a href="https://graduate.readthedocs.io/">Documentation</a> ·
+  <a href="https://graduate.readthedocs.io/en/latest/laptop.html">Run on a laptop</a> ·
+  <a href="https://nstream-ai.github.io/graduate/grid/">Experiments</a>
+</p>
 
 Your agent asks its model many small questions per conversation: which tool to call, with which
-arguments, or what to reply. Many are routine. Graduate takes your **logged production traces**
-and a **candidate model** (any model behind an OpenAI-compatible endpoint: a small open model on
-vLLM or Ollama, a cheaper API, or a model you trained), asks the candidate every logged state,
-and gives back a **report card**: the slices of traffic the candidate is certified to handle, with
-a statistical bound that holds for real agent traffic (calls linked within a conversation, many
-slices tested at once, small samples). Use them as a cascade: the candidate answers each turn, its answer is kept when it falls in a certified slice, and the reference answers otherwise. The cascade pays for a candidate call on every turn and adds latency on the turns it escalates.
+arguments, or what to reply. Many are routine. Graduate takes your **logged traces** and a
+**candidate model** (any model behind an OpenAI-compatible endpoint: a small open model on vLLM
+or Ollama, a cheaper API, or a model you trained), asks the candidate every logged state, and
+gives back a **report card**: the slices of traffic the candidate is certified to handle, with a
+bound that holds for real agent traffic (calls linked within a conversation, many slices tested
+at once, small samples).
 
-Documentation: https://graduate.readthedocs.io/ · Package: https://pypi.org/project/graduate/ ·
-Website: https://nstream-ai.github.io/graduate/ (experiments overview at `/grid/`)
+A certified slice means the candidate **agrees with your reference model** there, within the
+bound and for traffic like the traces you gave it. It does not mean the candidate is better, or
+that its reply wording is right. Use certified slices as a cascade: the candidate answers each
+turn, its answer is kept in a certified slice, and the reference answers otherwise.
 
-## Quick start
+## Install
 
 Requires Python 3.12 or later (CI tests 3.12, 3.13 and 3.14). Install into a virtual
-environment (Homebrew and most Linux Pythons refuse a global `pip install`, and macOS has
-`python3`, not `python`):
-
-```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install graduate
-```
-
-Until the first PyPI release is out, or to run the examples, install from a clone instead:
+environment; on macOS use `python3`:
 
 ```bash
 git clone https://github.com/nstream-ai/graduate && cd graduate
@@ -35,235 +38,105 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install .
 ```
 
-See a report card in seconds, with a stand-in candidate and no model (from the clone, with the
-virtual environment active):
+`pip install graduate` installs the same package from PyPI once it is published there; the clone
+also has the examples. Parquet input needs `pip install ".[parquet]"`.
+
+## Quick start
+
+See a report card in seconds, with a stand-in candidate and no model:
 
 ```bash
 python examples/mock_candidate.py &
 graduate certify examples/traces.jsonl --base-url http://localhost:8000/v1 --model mock --out report/
+kill %1        # stop the stand-in
 ```
 
-Then point it at a real candidate behind any OpenAI-compatible endpoint. A small model on a
-laptop works: with [Ollama](https://ollama.com), start the server (`brew services start ollama`
-on macOS, or `ollama serve`), `ollama pull qwen3:0.6b` and use
-`--base-url http://localhost:11434/v1 --model qwen3:0.6b`. `--model` must match the pulled tag
-exactly (`qwen3:0.6b`, not `qwen3`). `examples/README.md` also covers llama.cpp. On your own traces:
+Open `report/card.md`. Then point `--base-url` and `--model` at a real candidate, and pass your
+own traces:
 
 ```bash
-graduate certify traces.jsonl --preset openai --base-url http://localhost:11434/v1 --model <model> --out report/
+graduate certify traces.jsonl --base-url http://localhost:11434/v1 --model qwen3:0.6b --out report/
 ```
 
-Laptop settings: `--concurrency 1` (the default, 8, is for a server), one model loaded at a time,
-and unload it after every run, including between reruns of the same model: Ollama keeps a model
-loaded for 5 minutes, so run `ollama stop <model>` or start the server with
-`OLLAMA_KEEP_ALIVE=0`. Measured on an 8 GB M2 (Apple GPU, through Ollama): a 0.6B model takes
-about 0.6 s per call and a 2B model about 4 s; both fit. A 4B model (about 13 s per call) is at
-the limit of 8 GB: with other apps open, free memory fell to 9% on a longer conversation. On
-8 GB, compare models of 2B or less, close other apps, and watch memory (Activity Monitor);
-stop the run if it runs low, since a rerun reuses the cached answers. Size runs by calls: a
-1,000-call file at 13 s per call is close to four hours. Disk: each model is a download of a
-few GB (`qwen3.5:2b` 3.1 GB, `qwen3.5:4b` 4.0 GB); `ollama rm <model>` when done.
-
-Thinking models (Qwen3 and Qwen3.5 think by default): the default `--prompt-mode chat` sends the
-server's defaults, so the model may think before answering. Graduate reads only the final
-answer and tool calls, but thinking is slower and counts against the 1,024-token reply budget.
-`--prompt-mode completions` renders the model's chat template with thinking off (it sends
-token ids to `/completions`, which vLLM accepts; on Ollama, use a model tag without thinking). Context: each
-call sends the conversation so far; Ollama's default context (4,096 tokens) is enough for the
-examples, and longer traces need a larger one (`OLLAMA_CONTEXT_LENGTH`), or Ollama silently
-drops the start of the conversation.
-
-To compare two candidates, run `certify` once per candidate into separate folders on the same
-traces file with the same options (`--limit` included, so both cards cover the same
-conversations) and compare the cards slice by slice. There is no command that diffs two cards.
-A stopped run leaves `card.md` saying so (the previous card is kept as `previous-card.md`);
-rerun the same command to finish it. `graduate compare` is for task-success
-files (one `{"task_id", "success"}` row per task), not for report cards.
-
 `traces.jsonl` holds one conversation per line in the OpenAI chat format
-(`{"id": ..., "messages": [...], "tools": [...]}`, with the reference model's `tool_calls` and
-the tool results). Other formats: see [Trace formats](#trace-formats). Parquet input needs
-`pip install "graduate[parquet]"`.
+(`{"id": ..., "messages": [...], "tools": [...]}`, with the reference model's `tool_calls` and the
+tool results); `--preset` reads
+[other formats](https://graduate.readthedocs.io/en/latest/guide.html#trace-formats). `--model`
+must match the served name exactly. For a model on a laptop (memory, speed, Ollama), see
+[Run on a laptop](https://graduate.readthedocs.io/en/latest/laptop.html). The example file has 3
+conversations: enough to see the format, far too few to certify anything (a slice needs about 70
+conversations).
 
-**API keys.** No key is sent unless you pass `--api-key-env NAME` (the environment variable
-holding the candidate endpoint's key; `--reference-api-key-env` for the reference). A local
-server (Ollama, llama.cpp, vLLM) needs none. That is how we run candidates in our own τ²-bench
-experiments: on a local server, with `--preset tau2` traces.
+Rerun the same command to resume: the candidate's answers are cached in `report/`, and a run
+that stops leaves `card.md` saying so. Use a new `--out` for each candidate.
 
-You get, in `report/`:
+## Read the card
 
-- **certified slices**: each slice is the candidate's proposed action (call type, tool, position
-  in the session), which is known once the candidate has answered (the routing is a cascade); a slice is certified when its
-  disagreement with your reference model is provably below `--alpha` (default 5%) at 95%
-  confidence;
-- **certified share**: the fraction of your calls inside certified slices;
-- **decision split**: how often the candidate replied when the reference acted, and acted when it
-  replied, the most common way a substitute fails;
-- optionally, the **reference's own noise** (`--reference-base-url`, `--reference-model`): a
-  slice where your reference disagrees with itself at or above alpha cannot be certified by
-  agreement by anyone, and is reported as such;
-- `proposals.jsonl`: a cache of the candidate's answers. A rerun into the same folder resumes and
-  retries only failed requests. It is tied to the `--model` and `--base-url` it was made with, so
-  use a new `--out` for each candidate (or `--fresh` to ask again).
-- `planner.json`: the evidence estimate's memory across reruns into the same folder, so the
-  "more conversations" target does not move closer unless the disagreement rate improved.
+Each row is a **slice**: one kind of decision the candidate proposes (agent node, call type, tool,
+position in the conversation).
 
-`card.md` ends with a legend for the table. A slice that is not certified for lack of evidence
-gives a range of how many more conversations it would need; a slice whose disagreement is
-significantly above alpha (its lower bound reaches alpha) says that more conversations will not
-help. A high rate on a few conversations (say 100% on 3) is not yet shown to be above alpha: the
-card says there are too few conversations to tell. "Why slices disagree" gives one cause per
-disagreeing call and an example with its values redacted.
+| The card says | Meaning | What to do |
+| --- | --- | --- |
+| `GRADUATED` | Disagreement with the reference is below alpha (default 5%) at 95% confidence | The candidate can take this slice |
+| `-` with "more conversations" | Not enough evidence yet; the card gives a range | Add that many conversations and rerun |
+| `-` with "will not help" | Disagreement is significantly above alpha | Keep the slice on the reference |
+| `-` with "too few to show it is above alpha" | A high rate on very few conversations | Add conversations to tell |
+| `decision only (wording unchecked)` | A text reply: only the decision to reply is compared | Judge the wording separately, or pass `--certify-text-slices` |
+| `held: reference noise` | Your reference disagrees with itself here at or above alpha | No candidate can certify it by agreement |
 
-## Terms
+The card also gives the **certified share** of your calls, how often the candidate replied when
+the reference acted (and the reverse), and one cause per disagreeing call. It ends with a legend
+for every column.
 
-- **Call**: every model turn in a conversation, a tool call or a text reply.
-- **Slice**: one kind of decision the candidate proposes, known once it has answered: agent node, call type (tool or text), tool name, and position in the conversation.
-- **alpha**: the disagreement rate you allow on a slice (default 0.05). **delta**: 1 − confidence
-  (default 0.05, so 95% confidence).
-- **cap**: calls counted per conversation and slice (default 1), so one long conversation cannot
-  certify a slice on its own.
-- **Reference noise**: how often your reference model disagrees with itself on the same state.
+## Commands
 
-## Trace formats
+| Command | What it does |
+| --- | --- |
+| `graduate certify` | Certify a candidate against your reference, per slice, from logged traces |
+| `graduate claim-b` | Certify by effect: score forked conversations where the candidate answered one turn |
+| `graduate compare` | Compare whole sessions: paired task success of reference and candidate |
 
-| `--preset` | Reads |
-|---|---|
-| `openai` (default) | one conversation per line: `messages` (OpenAI chat format, `tool_calls` or legacy `function_call`), optional `tools` |
-| `hermes` | ShareGPT-style `conversations` with `<tool_call>` blocks (Hermes function calling) |
-| `toucan` | rows of the Toucan tool-agent dataset |
-| `nemotron` | rows of the Nemotron-Agentic dataset |
-| `nemotron-swe` | Nemotron software-engineering trajectories (first 100 steps) |
-| `swe-rebench` | SWE-rebench OpenHands trajectories |
-| `tau2` | τ²-bench simulation results; add the agent's system prompt and tool definitions to each simulation (`system`, `tools`) when you export them |
+`graduate <command> --help` lists every option with its default. To compare two candidates, run
+`certify` once per candidate on the same traces with the same options and compare the cards
+slice by slice.
 
-## What it certifies
+## What it does not check
 
-**Agreement with your reference model, per slice**: the candidate's action matches the
-reference's on at least 1 − alpha of the slice's calls, with 1 − delta confidence. And,
-optionally, **the reference's own noise** on the same states.
+- **Wording.** Two text replies agree when both are replies; their content is not compared.
+- **Outcomes.** Agreement with the reference is a proxy. Where your environment can be reset to a
+  logged state, `graduate claim-b` scores the stronger claim, by effect; running the forks needs
+  your own environment runner.
 
-If your reference disagrees with itself on a slice more often than your gate (alpha), **no
-candidate can certify that slice by agreement**. That is a property of your reference, not of the
-candidate. Tool slices of real agents often look like this: we measured 5–17% self-disagreement
-for one widely used API model on τ²-bench tool calls, against a 5% gate.
+If you grade replies with an LLM judge, use one from a different model family from both the
+candidate and the reference. Traces produced by a commercial API are subject to that provider's
+terms; checking that you may use them this way is your responsibility.
 
-**Default protocol:** cap 1 (one call per conversation and slice), the anytime-valid betting test
-of H0: disagreement ≥ alpha, Benjamini–Hochberg across slices, alpha = 5%, delta = 5%. As a rule
-of thumb at these defaults, a single slice needs about 70 conversations if the candidate never
-disagrees with the reference, about 120 at a true 1% disagreement rate and about 270 at 2%, and
-more when many slices are tested at once.
+## Documentation
 
-## Certify by effect: `graduate claim-b`
-
-Agreement with the reference is a proxy. When your environment can be **reset to a logged state**
-(a simulator, a sandbox, or a replay of your tools), you can test the outcome instead. Fork each
-sampled conversation at a turn, and run three branches from that exact state:
-
-- **T1, T2:** the reference answers the turn and finishes the conversation (twice, to measure its
-  own noise);
-- **S:** the candidate answers that one turn, and the reference finishes.
-
-Write one JSON line per branch:
-`{"state", "task_id", "slice", "branch": "T1"|"T2"|"S", "success": true|false, "termination"}`
-(plus `proposed_slice`, the candidate's own action, when it differs from the logged one).
-Graduate scores forks; it does not run them. Producing them needs a runner that resets your
-environment to the logged state. Then:
-
-    graduate claim-b forks.jsonl --session-margin 0.10 --cap 1 --out claim-b/
-
-For each slice of the candidate's proposals, the card reports:
-- the **signed net harm**: sessions the candidate's turn made worse minus sessions it made
-  better, per routed turn, with a one-sided finite-sample upper bound with tasks as the unit (a betting bound; a
-  task-cluster t bound and a bootstrap bound are printed for information only);
-- **never route**: the harm is likely (above 0) and its upper bound exceeds half the reference's
-  own success on the slice, so the router always sends it to the reference. "Not certified"
-  means the bound is above delta without that evidence of harm;
-- **vacuous**: the reference itself rarely succeeds there, so "no harm" means nothing;
-- the **smallest harm this evidence could detect**: "cannot be decided with this evidence" is
-  not a failure;
-- the **reference's noise floor**: how often T1 and T2 end differently.
-
-Slices with fewer than 30 states are listed as untested and kept out of the multiple-comparison
-family. Slices are named domain/kind/tool: positions in the conversation are pooled unless
-`--by-position`. Each input row needs `state`, `branch` (`T1`, `T2` or `S`), `task_id`, `slice`
-and `success`; a row missing a field, or input with no complete fork, stops with an error.
-
-**Two labels on every card:**
-- *Composition:* the per-session bound is the union bound over at most `cap` routed turns
-  (session harm ≤ cap × per-turn bound). The card also reports `cap_max_informative`, the
-  largest cap for which your per-turn bound still supports the session margin: for example, a
-  per-turn bound of 4 points and a 10-point margin give 2. A dependence-aware composition is
-  research, not used here.
-- *Requires:* an environment that can be reset to a logged state. Without one, use
-  `graduate certify` (agreement) and `graduate compare` (whole sessions).
-
-**Text replies and noisy slices.** A text-reply slice agrees on the decision to reply, not on
-the reply's wording, so it reads "decision only (wording unchecked)" and stays out of the
-certified share; `--certify-text-slices` counts it. With `--reference-base-url` the reference is
-re-asked on a sample of states, and a slice where it disagrees with itself at or above alpha reads
-"held: reference noise". `--prompt-mode completions` renders the candidate's prompt from its own
-chat template and parses the reply with `graduate.prompting` (Qwen, Gemma and the harmony format
-of gpt-oss models); `chat`, the default, uses the server's template and tool parser.
-
-## Compare whole sessions: `graduate compare`
-
-Run the reference and the candidate (or a hybrid router) on the same tasks, then:
-
-    graduate compare reference.jsonl candidate.jsonl --margin 0.10 --out compare/
-
-Input: `{"task_id", "success"}` lines, or τ²-bench `results.json` files (`--outcome db` for the
-database end state, `reward` for the full reward; infrastructure errors are left out). The report
-gives the paired regret (reference success − candidate success), with a one-sided 95% upper bound
-from a finite-sample betting bound with tasks as the unit (t and bootstrap bounds printed for
-information), a lower bound from the same test, and the smallest regret the evidence could
-detect. Verdicts: "non-inferior"; "worse than the margin" when even the lower bound is above it;
-"non-inferiority not shown (not proven worse)"; "cannot be decided with this evidence" when the
-task count is too small for the margin (fewer than 3 / margin tasks, and a few dozen tasks rarely
-resolve 10 points); "vacuous" when the reference itself succeeds on less than twice the margin.
-`success` must be `true`/`false` or `0`/`1`; other values stop with an error. Tasks in only one
-file are left out and counted. `--margin` is a fraction (0.10 = 10 points).
-
-## How the certificate works
-
-- **Finite-sample bounds, not normal approximations.** Clopper–Pearson bounds per call, and
-  betting bounds for fork and session claims;
-  the central-limit approximations common in LLM evaluation under-cover at the sample sizes real
-  slices have.
-- **Many slices, one error budget.** Benjamini–Hochberg across slices (Holm, Bonferroni and
-  Benjamini–Yekutieli are available), and an intersection–union test across gates (disagreement,
-  invalid calls).
-- **Conversations are not independent calls.** Calls are capped per conversation and slice, so one
-  long session cannot certify a slice on its own.
-- **Anytime-valid monitoring.** A betting-based sequential test lets you keep checking a certified
-  slice on live traffic without inflating the error rate.
-
-## What it does not check (yet)
-
-- **Wording.** Two text replies agree when both are replies; their content is not compared. Judge
-  replies separately, or measure outcomes.
-- **Outcomes.** Agreement with the reference is a proxy. Where an environment can be replayed, the
-  stronger claim is *by effect*: fork the conversation, let the candidate answer one turn, let the
-  reference finish, and compare task outcomes. `graduate claim-b` scores such forks (below); running them needs an environment runner.
-
-## Using a judge
-
-If you grade replies with an LLM judge, use a judge from a **different model family** from both
-the candidate and the reference. Models recognise and favour their own outputs, so grading with
-the model you are replacing (or its sibling) biases the certificate towards it.
-
-## Your traces and your provider's terms
-
-Traces produced by a commercial API are subject to that provider's terms. Checking that you may
-use them this way is your responsibility.
+- [Guide](https://graduate.readthedocs.io/en/latest/guide.html): what the card reports, trace
+  formats, `claim-b`, `compare`, and how the certificate works
+- [Run on a laptop](https://graduate.readthedocs.io/en/latest/laptop.html): Ollama and llama.cpp,
+  memory, speed, thinking models
+- [Changelog](https://github.com/nstream-ai/graduate/blob/main/CHANGELOG.md) and [references](https://github.com/nstream-ai/graduate/blob/main/REFERENCES.md)
 
 ## Tell us what went wrong
 
-The point of this release is to run it on **your** traces. If the card says something that does
-not match what you see in production (a slice certified that should not be, a format we cannot
-read, a candidate failure the card misses), please open an issue with the "Report from my traces"
-template. Share counts and `card.md` (example values are redacted there), not `card.json`,
-which keeps raw values from your traces, and not your customers' data.
+If the card says something that does not match what you see in production (a slice certified that
+should not be, a format we cannot read, a failure the card misses), open an issue with the
+"Report from my traces" template. Share counts and `card.md` (example values are redacted there),
+not `card.json`, which keeps raw values from your traces.
+
+## Citation
+
+```bibtex
+@software{graduate2026,
+  title  = {Graduate: statistical certificates for handing agent traffic to a cheaper model},
+  author = {{The Graduate Authors}},
+  year   = {2026},
+  url    = {https://github.com/nstream-ai/graduate},
+  note   = {Version 0.2.2}
+}
+```
 
 ## Development
 
@@ -273,11 +146,10 @@ ruff check src tests
 pytest
 ```
 
-The core needs only NumPy, SciPy and Pydantic. Licence: Apache-2.0 (third-party notices in `NOTICE`). References: `REFERENCES.md`.
+The core needs only NumPy, SciPy and Pydantic. `src/graduate` is the package; `index.html` and
+`grid/` are the website (GitHub Pages from `main`); `docs/` is the documentation site on Read the
+Docs (`pip install -r docs/requirements.txt . && sphinx-build -W docs docs/_build`).
 
-## This repo
+## License
 
-`index.html` and `grid/` (the experiments overview) are the website, published with GitHub Pages from the `main` branch;
-`src/graduate` is the package.
-`docs/` is the documentation site built on Read the Docs (`.readthedocs.yaml`); build it locally
-with `pip install -r docs/requirements.txt . && sphinx-build -W docs docs/_build`.
+Apache-2.0; see [LICENSE](https://github.com/nstream-ai/graduate/blob/main/LICENSE). Third-party notices are in [NOTICE](https://github.com/nstream-ai/graduate/blob/main/NOTICE).

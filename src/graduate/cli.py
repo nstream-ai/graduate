@@ -923,6 +923,11 @@ def main(argv: list[str] | None = None) -> None:
         "too_noisy_to_certify_by_agreement": sorted(noisy),
     }
     (out / "card.json").write_text(json.dumps(report, indent=2, default=str))
+    labels = {
+        r["slice"]: r["verdict"].split(" (cannot")[0]
+        for r in report["slices"]
+        if r["verdict"].startswith(("decision only", "held"))
+    }
     md = (
         f"# Graduate report card: {args.model}\n\n"
         + f"Candidate path: {candidate_path(args)}.\n\n"
@@ -952,7 +957,7 @@ def main(argv: list[str] | None = None) -> None:
         )
         + f"A call is every model turn: a tool call or "
         f"a text reply. Text replies agree by decision only (reply vs act); their wording is not "
-        f"compared.\n\n```\n{card.render(top=40)}\n```\n\n{CARD_LEGEND}"
+        f"compared.\n\n```\n{card.render(top=40, labels=labels)}\n```\n\n{CARD_LEGEND}"
         + f"Argument normaliser v{NORMALISER_VERSION}: {NORMALISER}.\n"
         + why_table(report["slices"], decision["forgiven_format_only"])
     )
