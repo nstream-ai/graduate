@@ -204,3 +204,9 @@ def test_one_bad_session_of_ten_at_cap_10_stays_undecided():
     card = report_card(keys, sess, wrong, cap=10, plan=False)
     assert not card.slices[0].above_alpha
     assert "will not help" not in card.render() and "cannot be decided" in card.render()
+
+
+def test_render_counts_capped_calls_and_never_shows_detect_above_one():
+    head, row = _one_slice(1, 1).render().splitlines()[:2]
+    assert "counted" in head
+    assert row.split()[7] == "-"  # one conversation: no rate can be ruled out

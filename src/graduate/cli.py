@@ -615,15 +615,17 @@ CONTRACT_LIMIT = 0.20  # share of conversations above which the reference is not
 
 CARD_LEGEND = """How to read the table: a slice is one kind of decision the candidate proposes
 (agent node / call type / tool / position bucket in the conversation). sess = conversations
-counted; calls = calls in the slice; rate = observed disagreement with the reference;
-upper = its 1 - delta upper bound; detect = the smallest disagreement rate this many
-conversations can rule out (about 3 / sess); p = p-value after the multiplicity correction; share =
-fraction of all calls. GRADUATED = certified at alpha: a router may send this slice to the
-candidate. "-" = not certified; "not enough evidence" says how many more conversations a
-slice would likely need at its observed rate. "Will not help" means the same betting test,
-mirrored (H0: disagreement <= alpha), rejects on the capped per-conversation counts; it is
-anytime-valid, so rerunning as conversations arrive does not inflate it. Text-reply slices read
-"decision only (wording unchecked)": agreement there is on the decision to reply, not on the
+counted; calls = calls in the slice; counted = the calls the test uses (the first `cap` per
+conversation); rate = observed disagreement on the counted calls, with the reference (so a slice
+can read 100% when later, uncounted calls agreed; the causes below use the counted calls too);
+upper = its 1 - delta upper bound; detect = the smallest disagreement rate this many conversations
+can rule out (about 3 / sess; "-" under 3 conversations, when none can); p = p-value after the
+multiplicity correction; share = fraction of all calls. GRADUATED = certified at alpha: a router
+may send this slice to the candidate. "-" = not certified; "not enough evidence" says how many more
+conversations a slice would likely need at its observed rate. "Will not help" means the same
+betting test, mirrored (H0: disagreement <= alpha), rejects on the capped per-conversation counts;
+it is anytime-valid, so rerunning as conversations arrive does not inflate it. Text-reply slices
+read "decision only (wording unchecked)": agreement there is on the decision to reply, not on the
 reply's wording, so they stay out of the certified share unless --certify-text-slices. "held:
 reference noise" = the reference disagrees with itself on the slice at or above alpha
 (--reference-base-url), so no candidate can certify it by agreement.
@@ -815,6 +817,16 @@ def main(argv: list[str] | None = None) -> None:
     todo = [r for r in rows if r["key"] not in proposals]
     if args.fresh or not cache.exists():
         cache.write_text(json.dumps(stamp) + "\n")
+    print(f"{len(rows) - len(todo):,} cached answers reused, {len(todo):,} to ask", file=sys.stderr)
+    # a run stopped from here on must not leave the previous card looking current
+    for name in ("card.md", "card.json"):
+        if (out / name).exists():
+            (out / name).replace(out / f"previous-{name}")
+    (out / "card.md").write_text(
+        f"# Run in progress or stopped\n\nThis run started on {len(rows):,} calls "
+        f"({len(todo):,} still to ask) and has not finished. Rerun the same command to finish it: "
+        "cached answers are reused. The previous card, if any, is previous-card.md.\n"
+    )
 
     def one(r: dict[str, Any]) -> dict[str, Any]:
         try:

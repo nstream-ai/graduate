@@ -476,3 +476,18 @@ def test_claim_b_bad_input_says_what_is_wrong(tmp_path: Path, capsys) -> None:
 def test_v01_import_path_says_it_was_renamed() -> None:
     with pytest.raises(ImportError, match=r"renamed graduate\.prompting"):
         import graduate.train  # noqa: F401
+
+
+def test_a_stopped_run_does_not_leave_the_previous_card_looking_current(tmp_path: Path) -> None:
+    traces = tmp_path / "t.jsonl"
+    traces.write_text("\n".join(json.dumps(_trace(i)) for i in range(5)))
+    server, url = _serve()
+    try:
+        _run(traces, tmp_path / "r", url, "fake", "--limit", "2")
+    finally:
+        server.shutdown()
+        server.server_close()  # refuse connections from now on
+    with pytest.raises(SystemExit):  # the server is gone: the run stops before a new card
+        _run(traces, tmp_path / "r", url, "fake", "--limit", "2", "--fresh")
+    assert (tmp_path / "r" / "card.md").read_text().startswith("# Run in progress or stopped")
+    assert "slice" in (tmp_path / "r" / "previous-card.md").read_text()

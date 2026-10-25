@@ -193,7 +193,7 @@ class ReportCard:
     def render(self, top: int = 25) -> str:
         multi = len(self.alphas) > 1
         head = (
-            f"{'slice':<52}{'cap':>4}{'sess':>6}{'calls':>7}{'rate':>7}{'upper':>7}"
+            f"{'slice':<52}{'cap':>4}{'sess':>6}{'calls':>7}{'counted':>8}{'rate':>7}{'upper':>7}"
             f"{'detect':>7}{'p':>8}{'share':>7}  verdict"
         )
         rows = [head]
@@ -215,10 +215,12 @@ class ReportCard:
                         f"  [cannot be decided with this evidence: disagreement {r.rate:.0%} on "
                         f"{r.sessions} conversations, too few to show it is above alpha {a:g}]"
                     )
-            detect = 3 / r.sessions if r.sessions else 1.0  # smallest rate n can rule out
+            # smallest rate this many conversations can rule out; "-" when none (3 / sess > 1)
+            detect = f"{3 / r.sessions:.3f}" if r.sessions >= 3 else "-"
             rows.append(
-                f"{r.slice[:51]:<52}{r.cap:>4}{r.sessions:>6}{r.calls:>7}{r.rate:>7.3f}"
-                f"{r.upper:>7.3f}{detect:>7.3f}{r.pvalue:>8.3f}{r.call_share:>7.3f}  {verdict}"
+                f"{r.slice[:51]:<52}{r.cap:>4}{r.sessions:>6}{r.calls:>7}"
+                f"{r.certified_population:>8}{r.rate:>7.3f}"
+                f"{r.upper:>7.3f}{detect:>7}{r.pvalue:>8.3f}{r.call_share:>7.3f}  {verdict}"
             )
         caps = "per slice (dev)" if isinstance(self.cap, dict) else f"{self.cap}"
         gates = ", ".join(f"{g} <= {a}" for g, a in self.alphas.items())
