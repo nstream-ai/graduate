@@ -10,7 +10,7 @@
 <p align="center">
   <a href="https://nstream-ai.github.io/graduate/">Website</a> ·
   <a href="https://graduate.readthedocs.io/">Documentation</a> ·
-  <a href="https://graduate.readthedocs.io/en/latest/laptop.html">Run on a laptop</a> ·
+  <a href="https://github.com/nstream-ai/graduate/blob/main/docs/laptop.md">Run on a laptop</a> ·
   <a href="https://nstream-ai.github.io/graduate/grid/">Experiments</a>
 </p>
 
@@ -61,9 +61,9 @@ graduate certify traces.jsonl --base-url http://localhost:11434/v1 --model qwen3
 `traces.jsonl` holds one conversation per line in the OpenAI chat format
 (`{"id": ..., "messages": [...], "tools": [...]}`, with the reference model's `tool_calls` and the
 tool results); `--preset` reads
-[other formats](https://graduate.readthedocs.io/en/latest/guide.html#trace-formats). `--model`
+[other formats](https://github.com/nstream-ai/graduate/blob/main/docs/guide.md#trace-formats). `--model`
 must match the served name exactly. For a model on a laptop (memory, speed, Ollama), see
-[Run on a laptop](https://graduate.readthedocs.io/en/latest/laptop.html). The example file has 3
+[Run on a laptop](https://github.com/nstream-ai/graduate/blob/main/docs/laptop.md). The example file has 3
 conversations: enough to see the format, far too few to certify anything (a slice needs about 70
 conversations).
 
@@ -113,9 +113,9 @@ terms; checking that you may use them this way is your responsibility.
 
 ## Documentation
 
-- [Guide](https://graduate.readthedocs.io/en/latest/guide.html): what the card reports, trace
+- [Guide](https://github.com/nstream-ai/graduate/blob/main/docs/guide.md): what the card reports, trace
   formats, `claim-b`, `compare`, and how the certificate works
-- [Run on a laptop](https://graduate.readthedocs.io/en/latest/laptop.html): Ollama and llama.cpp,
+- [Run on a laptop](https://github.com/nstream-ai/graduate/blob/main/docs/laptop.md): Ollama and llama.cpp,
   memory, speed, thinking models
 - [Changelog](https://github.com/nstream-ai/graduate/blob/main/CHANGELOG.md) and [references](https://github.com/nstream-ai/graduate/blob/main/REFERENCES.md)
 
