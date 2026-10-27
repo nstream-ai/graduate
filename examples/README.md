@@ -21,7 +21,7 @@ kill %1        # stop the stand-in
 ## With a real model
 
 To run a small model with Ollama or llama.cpp, including memory, speed and thinking models on a
-laptop, see [Run on a laptop](https://graduate.readthedocs.io/en/latest/laptop.html).
+laptop, see [Run on a laptop](https://github.com/nstream-ai/graduate/blob/main/docs/laptop.md).
 
 Use a new `--out` folder for each candidate (or pass `--fresh`): `proposals.jsonl` there caches
 the candidate's answers, so a rerun resumes and retries only the requests that failed.
