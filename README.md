@@ -11,6 +11,7 @@
   <a href="https://nstream-ai.github.io/graduate/">Website</a> ·
   <a href="https://graduate.readthedocs.io/">Documentation</a> ·
   <a href="https://github.com/nstream-ai/graduate/blob/main/docs/laptop.md">Run on a laptop</a> ·
+  <a href="https://nstream-ai.github.io/graduate/note/">Research note</a> ·
   <a href="https://nstream-ai.github.io/graduate/grid/">Experiments</a>
 </p>
 

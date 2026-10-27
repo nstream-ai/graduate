@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Graduate research note</title>
+<meta name="description" content="Where can a cheaper model take over an LLM agent? The argument, the evidence and the caveats behind the Graduate paper, in reading order.">
+<style>
+:root { --bg:#fbfaf7; --surface:#ffffff; --ink:#1b1c1f; --muted:#5b5f68; --line:#e4e2dc; --accent:#1f5fbf; --accent-soft:#e8effa; --warn:#b8860b; --warn-soft:#fff7e0; --bad:#b23a3a; --bad-soft:#fbeaea; --good:#1f7a4d; --good-soft:#e3f4ec; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#111215; --surface:#191b1f; --ink:#ecebe7; --muted:#a2a5ad; --line:#2b2e34; --accent:#7aa7ee; --accent-soft:#1b2738; --warn:#e2b64a; --warn-soft:#2a2410; --bad:#e07070; --bad-soft:#2c1818; --good:#6fcf9c; --good-soft:#16281f; } }
+:root[data-theme="dark"] { --bg:#111215; --surface:#191b1f; --ink:#ecebe7; --muted:#a2a5ad; --line:#2b2e34; --accent:#7aa7ee; --accent-soft:#1b2738; --warn:#e2b64a; --warn-soft:#2a2410; --bad:#e07070; --bad-soft:#2c1818; --good:#6fcf9c; --good-soft:#16281f; }
+* { box-sizing:border-box }
+body { margin:0; background:var(--bg); color:var(--ink); font: 17px/1.6 Georgia, "Iowan Old Style", "Times New Roman", serif; }
+a { color:var(--accent); text-decoration:none } a:hover { text-decoration:underline }
+code { font: 0.88em "JetBrains Mono", ui-monospace, Menlo, monospace; background:var(--accent-soft); padding:0 .3em; border-radius:4px }
+.wrap { max-width:1120px; margin:0 auto; padding:0 16px; display:grid; grid-template-columns: 220px minmax(0,1fr); gap:40px }
+@media (max-width:860px){ .wrap{ grid-template-columns:1fr } nav.toc{ position:static; border:0; padding:0 } }
+header.hero { padding:56px 16px 28px; max-width:1120px; margin:0 auto }
+.eyebrow { font: 600 12px/1 system-ui, sans-serif; letter-spacing:.14em; text-transform:uppercase; color:var(--muted) }
+h1 { font-size:2.1rem; line-height:1.15; margin:.4em 0 .3em } h2 { font-size:1.45rem; margin:2.4em 0 .5em; line-height:1.2 } h3 { font-size:1.1rem; margin:1.6em 0 .4em }
+h2 .num { font: 600 12px/1 system-ui, sans-serif; letter-spacing:.14em; color:var(--accent); display:block; margin-bottom:.5em }
+.lede { font-size:1.15rem; color:var(--muted); max-width:760px }
+.cta { display:inline-block; margin-top:14px; padding:10px 16px; border:1px solid var(--accent); border-radius:8px; font: 600 14px system-ui, sans-serif; color:var(--accent) }
+nav.toc { position:sticky; top:24px; align-self:start; font: 14px/1.5 system-ui, sans-serif; border-left:2px solid var(--line); padding-left:14px }
+nav.toc .t { font-weight:600; color:var(--muted); font-size:12px; letter-spacing:.12em; text-transform:uppercase; margin-bottom:8px }
+nav.toc a { display:block; color:var(--muted); padding:3px 0 } nav.toc a:hover { color:var(--accent) }
+main { min-width:0 }
+.card { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:18px 20px; margin:18px 0 }
+.tldr { border-left:4px solid var(--accent) }
+.claim { border-left:4px solid var(--good); background:var(--good-soft) }
+.caveat { border-left:4px solid var(--warn); background:var(--warn-soft) }
+.withdrawn { border-left:4px solid var(--bad); background:var(--bad-soft) }
+figure { margin:22px 0 } figure img { width:100%; height:auto; border:1px solid var(--line); border-radius:10px; background:#fff }
+figcaption { font: 14px/1.5 system-ui, sans-serif; color:var(--muted); margin-top:8px }
+table { border-collapse:collapse; width:100%; font: 14.5px/1.45 system-ui, sans-serif; margin:14px 0 }
+th, td { text-align:left; padding:7px 9px; border-bottom:1px solid var(--line); vertical-align:top } th { color:var(--muted); font-weight:600 }
+td.n { text-align:right; font-variant-numeric:tabular-nums } th.n { text-align:right }
+.v-ok { color:var(--good); font-weight:600 } .v-no { color:var(--bad); font-weight:600 } .v-und { color:var(--warn); font-weight:600 }
+details { border:1px solid var(--line); border-radius:10px; padding:10px 16px; margin:14px 0; background:var(--surface) }
+summary { cursor:pointer; font: 600 15px system-ui, sans-serif; color:var(--accent) }
+.calc { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:14px; font: 14px system-ui, sans-serif }
+.calc label { display:block; color:var(--muted); margin-bottom:4px } .calc input, .calc select { width:100%; padding:7px 8px; border:1px solid var(--line); border-radius:6px; background:var(--bg); color:var(--ink); font-size:15px }
+.out { margin-top:14px; font: 15px/1.5 system-ui, sans-serif } .out b { font-size:1.35rem }
+.faq dt { font: 600 15.5px system-ui, sans-serif; margin-top:16px } .faq dd { margin:4px 0 0 0 }
+footer { max-width:1120px; margin:60px auto 40px; padding:0 16px; color:var(--muted); font: 14px system-ui, sans-serif; border-top:1px solid var(--line); padding-top:18px }
+.small { font: 14px/1.5 system-ui, sans-serif; color:var(--muted) }
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="eyebrow">Research note · Graduate · October 2026</div>
+  <h1>Where can a cheaper model take over an LLM agent?</h1>
+  <p class="lede">A benchmark says which model is better on average. A team running an agent needs a different answer: on which calls, in their own traffic, can a cheaper model take over, and with what error control. This note walks through how we tried to answer that, what held, what did not, and what the evidence would need to be.</p>
+  <a class="cta" href="#overview">Read the note</a>
+  <a class="cta" href="https://github.com/nstream-ai/graduate">Code</a>
+  <a class="cta" href="#paper">Paper</a>
+</header>
+
+<div class="wrap">
+<nav class="toc" aria-label="In this note">
+  <div class="t">In this note</div>
+  <a href="#overview">Overview</a>
+  <a href="#s1">01 The question</a>
+  <a href="#s2">02 The reference disagrees with itself</a>
+  <a href="#s3">03 Certify by effect</a>
+  <a href="#s4">04 Evidence is counted in tasks</a>
+  <a href="#s5">05 A result we withdrew</a>
+  <a href="#s6">06 What the exams show</a>
+  <a href="#s7">07 A bound we got wrong</a>
+  <a href="#s8">08 Limitations</a>
+  <a href="#s9">09 Questions and checks</a>
+  <a href="#end">Where this leaves us</a>
+</nav>
+
+<main>
+<section id="overview">
+  <h2><span class="num">Overview</span>Three findings, one honest answer</h2>
+  <div class="card tldr">
+    <p><strong>TL;DR.</strong> Graduate certifies, slice by slice, where a cheaper <em>candidate</em> model may take over from the <em>reference</em> model that runs an agent today. Three findings shaped it. (1) The reference disagrees with <em>itself</em> on identical states 5 to 17% of the time, so "agrees with the reference" cannot prove a swap safe below that floor. (2) Safety has to be measured by <em>effect</em>: fork the environment at a logged state, let the candidate take one turn, let the reference finish, compare outcomes. (3) The evidence that decides a slice is counted in <em>distinct tasks</em>, not repeated runs, and on τ²-bench there were not enough: no per-turn slice certified, and the certifier says so instead of guessing.</p>
+    <p>At the whole-conversation level, a hybrid that lets an untrained 4B model answer nearly every turn is no worse than two Flash-class references and undecided against a Pro-class one. A 50-point win we first measured turned out to be the reference breaking its own tool contract, which the method now checks first. Training the 4B four ways moved nothing we could detect.</p>
+  </div>
+  <p class="small">Read straight through for the argument. Open the panels for derivations, tables and the checks a reviewer would ask for.</p>
+</section>
+
+<section id="s1">
+  <h2><span class="num">01 The question</span>"Which calls can it take over?" is not a benchmark question</h2>
+  <p>An agent makes many model calls per conversation: pick a tool, fill its arguments, read the result, reply. Many are narrow and repetitive. A smaller model could make them for a fraction of the cost. The hard part is the guarantee. Agent traffic breaks the assumptions evaluation tools rely on: calls inside a conversation are dependent, several actions are often equally acceptable, the reference itself is random even at temperature 0, judges miss errors, and the data keep arriving while people look at them.</p>
+  <p>Graduate's unit of independence is the <strong>session</strong> (one conversation). A <strong>slice</strong> is one kind of decision: call type, tool, position in the session. The product of the analysis is a <strong>report card</strong>: for each slice, certified, not certified, cannot be decided with this evidence, or never route.</p>
+  <figure><img src="figures/fig0_method.png" alt="Fork-and-compare and the cascade"><figcaption>Left: a logged state is replayed three times to the end of the conversation, twice by the reference and once with the candidate taking that turn. Right: deployment is a cascade. The candidate proposes on every turn; its proposal is kept only when its slice is certified, otherwise the reference answers. The swap's cost therefore includes a candidate call on every turn.</figcaption></figure>
+</section>
+
+<section id="s2">
+  <h2><span class="num">02 The reference disagrees with itself</span>Agreement has a floor, and the floor is the reference's own noise</h2>
+  <p>The cheapest certificate is agreement: does the candidate make the same call the reference made? Before scoring any candidate, we re-asked the reference (Gemini 2.5 Flash) on its own logged states, four times each, through the agent's own call path.</p>
+  <figure><img src="figures/fig4_dtt.png" alt="Reference self-disagreement by domain and temperature"><figcaption>Self-disagreement on tool and arguments, 100 states per domain. At temperature 0: 5.0% retail, 9.5% airline, 16.8% telecom. At temperature 0.7: 11.3%, 19.8%, 27.2%.</figcaption></figure>
+  <div class="card claim"><p>A 5% agreement gate is at or below the reference's own noise on telecom and at its edge on retail. No candidate can certify those tool slices by agreement, whatever its quality. Agreement stays a diagnostic. The certificate has to be by effect.</p></div>
+  <details><summary>Why self-noise is a variance, not a bias, in the effect-based test</summary><p>In the fork design below, two reference continuations T<sub>1</sub> and T<sub>2</sub> are exchangeable, so the expected net harm of the reference against itself is zero. The flip rate between them enters the sizing of a slice, a validity check (the measured reference-vs-reference harm must sit within noise of zero), and nothing else. It does not shift the bound.</p></details>
+</section>
+
+<section id="s3">
+  <h2><span class="num">03 Certify by effect</span>Fork the conversation, let the candidate take one turn, compare outcomes</h2>
+  <p>τ²-bench can replay a conversation prefix into a fresh database. From a logged state we run three branches to the end: T<sub>1</sub> and T<sub>2</sub>, the reference continuing; S, the candidate answering that one turn and the reference finishing. Each branch ends with a task outcome, pass or fail.</p>
+  <p>The certified quantity is the <strong>signed net harm</strong>: how often the candidate's turn turned a pass into a fail, minus how often it turned a fail into a pass. A slice certifies at cap 1 when a one-sided finite-sample upper bound on net harm is at most the margin. Two rules came from the data: a slice is <strong>vacuous</strong> if the reference itself rarely succeeds there, and a slice is <strong>never-route</strong> if harm is likely and could exceed half the reference's own success.</p>
+  <figure><img src="figures/fig6_l2_forks.png" alt="Fork results on fresh states"><figcaption>Forks of an untrained Qwen3.5-4B on 632 fresh retail states and the telecom calibration set, with strict replay (zero mismatches). Net harm is small everywhere, between −3 and +3 points.</figcaption></figure>
+  <table>
+    <tr><th>Slice (the 4B's proposal)</th><th class="n">Tasks</th><th class="n">Net harm</th><th class="n">Finite-sample upper</th><th>Verdict at a 10-point margin</th></tr>
+    <tr><td>retail get_order_details</td><td class="n">58</td><td class="n">+0.9</td><td class="n">12.4</td><td class="v-no">not certified</td></tr>
+    <tr><td>retail get_user_details</td><td class="n">53</td><td class="n">+2.5</td><td class="n">15.9</td><td class="v-no">not certified</td></tr>
+    <tr><td>retail find_user_id_by_name_zip</td><td class="n">41</td><td class="n">+0.2</td><td class="n">16.3</td><td class="v-no">not certified</td></tr>
+    <tr><td>telecom get_details_by_id</td><td class="n">50</td><td class="n">+2.0</td><td class="n">18.7</td><td class="v-und">cannot be decided</td></tr>
+    <tr><td>airline get_reservation_details</td><td class="n">25</td><td class="n">+1.5</td><td class="n">19.9</td><td class="v-und">cannot be decided</td></tr>
+    <tr><td>airline cancel_reservation (32B candidate, 33 states)</td><td class="n">8</td><td class="n">+90.9</td><td class="n">—</td><td class="v-no">never route</td></tr>
+  </table>
+  <div class="card caveat"><p>The harm is small. What is missing is tasks. Under the rule we pre-registered, three of these slices certified; under the corrected bound of section 07, none does, and each would need roughly 76 to 193 distinct tasks. One slice was decided the other way from only 33 states: when the 32B proposed cancelling a reservation, the reference's 94% success fell to 3%. Catastrophes are cheap to find; safety is expensive to prove.</p></div>
+</section>
+
+<section id="s4">
+  <h2><span class="num">04 Evidence is counted in tasks</span>Repeating runs does not buy certification; distinct tasks do</h2>
+  <p>Forks of the same task are correlated, so the task, not the state, is the unit. The number of tasks a slice needs grows with the margin you want to prove and with the reference's own flip rate. The planner below is the one the certifier prints on every undecided slice.</p>
+  <div class="card">
+    <div class="calc">
+      <div><label for="delta">Per-turn margin δ (points)</label><input id="delta" type="number" min="1" max="50" step="1" value="10"></div>
+      <div><label for="flip">Reference flip rate (T<sub>2</sub> ≠ T<sub>1</sub>)</label><input id="flip" type="number" min="0" max="1" step="0.05" value="0.25"></div>
+      <div><label for="ntask">Tasks you have</label><input id="ntask" type="number" min="1" max="5000" step="1" value="58"></div>
+      <div><label for="sd">Per-task spread of harm (s.d.)</label><input id="sd" type="number" min="0.01" max="1" step="0.01" value="0.30"></div>
+    </div>
+    <div class="out" id="out"></div>
+    <p class="small">States needed: n ≥ max(3/δ, (1.645+0.84)²·flip/δ²), a one-sided 95% bound at 80% power. Minimum detectable harm with n tasks: max(3/n, 2.485·s.d./√n). Defaults are the retail <code>get_order_details</code> slice.</p>
+  </div>
+  <figure><img src="figures/fig8_mde.png" alt="States needed per slice"><figcaption>States needed per slice as a function of the margin and the reference's flip rate. At a 5-point margin with a 25% flip rate, about 620 states; at 10 points, about 155.</figcaption></figure>
+  <div class="card claim"><p>Our retail held-out set had 15 tasks. Every per-slice failure before the fresh-state run was "cannot be decided", not "failed", and the planner would have said so before any training run was paid for.</p></div>
+</section>
+
+<section id="s5">
+  <h2><span class="num">05 A result we withdrew</span>The 50-point win was the reference breaking its own tool contract</h2>
+  <p>The first pre-registered whole-conversation exam returned regret of −50.6 points: the hybrid beat the reference by half the scale. Before reading that as real we checked termination reasons and tool use per arm, and three independent reviews of the repository found what that check had missed.</p>
+  <div class="card withdrawn"><p>In 94% of telecom sessions the reference called tools that do not exist in the agent's tool list: the customer's own device tools, named in the published policy manual in sentences that read as instructions. It ran with thinking on while the candidate ran thinking off, and only the hybrid had a validity shield. The pooled verdict was a telecom-pool result against a reference that mostly failed. We report the exam as computed and withdraw it as evidence about the candidate.</p></div>
+  <p>What the certifier should have printed is a <strong>reference contract card</strong>: a reference that breaks its tool contract in most sessions is not an admissible comparator on that domain. The card is now computed per reference, per domain, before any comparison, with a pre-declared 20% threshold. Three successor references under the same policy and tool list break the contract in 0% of sessions; the defect belonged to one model under one prompt.</p>
+  <details><summary>The symmetric re-examination</summary><p>With reference arms matched to the candidate, the one-retry shield hid the violations (0% executed, 74% attempted) without changing the outcome. A one-line policy fix removed them (0% attempted) and nearly doubled the reference's success, to 37.5%. Against that repaired reference the hybrid is non-inferior at a 10-point margin on the 40 telecom test tasks (regret −41.2, finite-sample upper −19.7), at the task level only: with three issue types as clusters, no bound can decide. The repaired reference still fails most telecom tasks, so the claim is narrow and stated as such.</p></details>
+</section>
+
+<section id="s6">
+  <h2><span class="num">06 What the exams show</span>Supported against cheap references, open against the expensive one</h2>
+  <p>With admissibility checked first and every bound under the corrected rule, four pre-registered exams ran on tasks the candidate was never trained on. The arm is a hybrid: the 4B answers from the first turn until an invalid tool call, then the reference finishes. Regret is reference success minus hybrid success, so negative is good for the hybrid.</p>
+  <table>
+    <tr><th>Reference</th><th>Tasks</th><th class="n">Reference</th><th class="n">Hybrid</th><th class="n">Regret</th><th class="n">Upper (95%)</th><th>Verdict at 10 points</th></tr>
+    <tr><td>Gemini 2.5 Flash, thinking off</td><td>131 retail + airline write tasks</td><td class="n">32.8</td><td class="n">59.9</td><td class="n">−27.1</td><td class="n">−15.3</td><td class="v-ok">non-inferior</td></tr>
+    <tr><td>Gemini 3.8 Flash, minimum thinking</td><td>140 telecom tasks</td><td class="n">70.0</td><td class="n">85.0</td><td class="n">−15.0</td><td class="n">−6.0</td><td class="v-ok">non-inferior, task level</td></tr>
+    <tr><td>Gemini 3.1 Pro preview, minimum thinking</td><td>104 retail write tasks</td><td class="n">73.1</td><td class="n">65.9</td><td class="n">+7.2</td><td class="n">+20.4</td><td class="v-und">cannot be decided</td></tr>
+  </table>
+  <div class="card caveat"><p>The Flash references ran with thinking off or at its minimum, as the candidate did. With thinking on, 2.5 Flash scored about 10 points more on retail, a difference the exam could not detect. Against the strongest reference we ran, where a cost saving would matter most, the comparison is undecided.</p></div>
+  <details><summary>Routing only the formerly certified slices: one turn moved success by 16 points</summary><p>A hybrid that routed to the 4B only on the slices the old rule had certified, at most one turn per session, routed 6.5% of agent turns and still scored 21 points above the reference alone. A control with the same scaffold and nothing routed separated the sources: the scaffold changed nothing we could detect (+5.0, interval −5.3 to +15.2), while routing one turn added +16.0 (interval +4.2 to +27.9). One early turn, an authentication step or the first lookup, changes the rest of the conversation. A per-turn harm bound composed by the union bound does not describe that, and the slices in question no longer certify. Exploratory.</p></details>
+  <details><summary>Training the 4B: four recipes, three seeds, no detectable change</summary><p>SFT on a same-family 9B's successful runs: −4.2 points (seed s.d. 6.4). GRPO: 0.0 (1.4). WAPO: +8.3 (4.8). JOLT+: +6.0 (5.8) after only five or six updates. No arm exceeded the frozen two-standard-deviation rule, and a single exam on 36 tasks detects about 20 points. The two recipes with a prior for improvement moved up and SFT moved down, which is a direction at a pilot budget, not an effect.</p></details>
+</section>
+
+<section id="s7">
+  <h2><span class="num">07 A bound we got wrong</span>An external review found it, a simulation measured it, and the replacement is proved</h2>
+  <p>During the study, fork and session claims used the stricter of a task-clustered bootstrap and an "exact" bound conditional on the discordant states. After the study, an external review showed that the conditional bound treats the discordance rate as known and returns the point estimate when the candidate is never better. Our validity grid had drawn the candidate's branch independently of the reference's, so every cell had two-sided discordance, and in that regime the rule held. It does not hold when a candidate is sometimes worse and never better.</p>
+  <table>
+    <tr><th>Procedure (nominal 5%)</th><th class="n">Worst false certification</th></tr>
+    <tr><td>Conditional exact bound alone, 30 states, one-sided null</td><td class="n">67%</td></tr>
+    <tr><td>Stricter of exact and bootstrap (as used), 30 / 60 / 178 states</td><td class="n">20% / 14% / 5%</td></tr>
+    <tr><td>Task-cluster t bound on forks (91 of 96 cells over tolerance)</td><td class="n">46%</td></tr>
+    <tr><td><strong>Task-level finite-sample betting bound (adopted)</strong>, 120 cells</td><td class="n"><strong>1.1%</strong></td></tr>
+  </table>
+  <p>The replacement is a betting bound on per-task differences with tasks as the unit, valid in finite samples by construction, with false-discovery control by e-BH across slices. Every verdict in the paper is reported under both rules; the per-slice certificates did not survive the change.</p>
+  <details><summary>Proposition and proof sketch</summary><p>Let tasks be exchangeable and d<sub>t</sub> ∈ [−1, 1] be task t's mean of worse minus better, with h = E[d<sub>t</sub>]. For a candidate margin δ, run the betting process on d<sub>t</sub> − δ with predictable bets in [0, c/(1−δ)] and average the final capital over a fixed set of task orders. Under h ≥ δ each factor has conditional expectation at most 1, so the capital is a non-negative supermartingale and its final value an e-value; an average of e-values is an e-value; Markov gives P(Ē ≥ 1/γ) ≤ γ. Inverting over δ gives an upper bound U with P(h &gt; U) ≤ γ. e-BH on the per-slice e-values controls the false discovery rate under arbitrary dependence between slices (Wang and Ramdas, 2022).</p></details>
+  <figure><img src="figures/fig1_validity.png" alt="Validity of the per-call tests"><figcaption>The per-call tests, at boundary nulls in simulation and on a week of real agent traffic used as a finite population. Common shortcuts falsely certify 10 to 100% of slices; the adopted tests stay at the nominal level.</figcaption></figure>
+</section>
+
+<section id="s8">
+  <h2><span class="num">08 Limitations</span>What this evidence cannot say</h2>
+  <ul>
+    <li><strong>One benchmark, one user-simulator family.</strong> Every verdict rests on a Gemini user. Two second-family simulators agreed in direction and failed their pre-registered fidelity gates.</li>
+    <li><strong>References matched to the candidate.</strong> Flash ran with thinking off or at its minimum; at its default it is stronger, by an amount we could not resolve.</li>
+    <li><strong>No per-turn certificate yet.</strong> A 10-point certificate needs 76 to 193 distinct tasks per slice on this pair, more than τ²-bench's train splits provide per tool.</li>
+    <li><strong>Session dependence.</strong> Per-turn bounds compose only by the union bound; the composition curve we measured rests on an inadmissible reference and is not claimed.</li>
+    <li><strong>Generation budget.</strong> Candidates ran at 256 new tokens per turn and about 20% of turns hit the cap; a 1,024-token arm detected no difference, on a small test.</li>
+    <li><strong>Pinned benchmark commit.</strong> Later τ²-bench releases replaced 50 of 114 retail and telecom tasks; numbers are not comparable across versions.</li>
+  </ul>
+</section>
+
+<section id="s9">
+  <h2><span class="num">09 Questions and checks</span>What a reviewer would ask, and what we checked</h2>
+  <dl class="faq">
+    <dt>Isn't the slice selected by the candidate's own output? Does the guarantee survive that?</dt>
+    <dd>States are sampled before the proposal is seen and grouped by the proposal afterwards; the bound is computed within the group, so it is a bound on harm conditional on the candidate proposing that action, which is exactly the population the cascade routes. Thresholds and caps are chosen on a disjoint split.</dd>
+    <dt>Could the endpoint, the prompt rendering or the token budget explain the numbers?</dt>
+    <dd>Three pre-registered checks: an A/A test between endpoints, our completions path against the server's chat path, and 256 against 1,024 new tokens. None differed beyond noise. Each test is small, so "no difference detected" is the claim, not "interchangeable".</dd>
+    <dt>Is the 4B contaminated on τ²-bench?</dt>
+    <dd>Qwen's published material names τ²-bench as an evaluation target. The 4B does 13 points <em>worse</em> on the official telecom split than on unused tasks of the same issue types, the opposite of memorisation; paraphrasing 20 retail scenarios changed success by an amount that includes zero. None of this rules out contamination of the task generator. In our harness the 4B and 9B score about 10 points below their self-reported τ² numbers at Qwen's recommended settings.</dd>
+    <dt>Why not just use the candidate alone?</dt>
+    <dd>On these exams the 4B alone matches the hybrid against the Flash references. The hybrid's value is the handover on invalid calls and the never-route list; the certificate's value is knowing which slices to trust, which this data could not yet establish.</dd>
+    <dt>What changed during the study?</dt>
+    <dd>The per-turn margin went from 5 to 10 after the first attempt certified nothing; telecom clustering moved from issue types to tasks because three clusters cannot decide anything; the fork and session bound was replaced after the external review. Each change is dated in its pre-registration and both readings are reported.</dd>
+    <dt>What did it cost?</dt>
+    <dd>About $225 of API spend, about 60 L4-hours and 50 A100-hours, itemised in the paper's compute appendix.</dd>
+  </dl>
+</section>
+
+<section id="end">
+  <h2><span class="num">Where this leaves us</span>The certifier is the asset; the evidence is the bottleneck</h2>
+  <p>We set out to distil a reference into a small student and prove where it could take over. The students lost to untrained open models, the first "graduation" did not survive its audit, and the per-turn certificates did not survive a corrected bound. What the work produced is the instrument that could say all of that with error control: a reference contract card, a planner that counts the tasks a slice needs, an effect-based test that needs no judge, and a cascade whose cost is counted honestly. If you run an agent, run the contract card first, size your slices before you train anything, and certify by effect where your environment can be replayed.</p>
+  <p id="paper"><a href="https://github.com/nstream-ai/graduate">Code and report cards</a> · Paper: <em>Where Can a Cheaper Model Take Over an LLM Agent? Certifying Partial Replacement from Logged Traces</em> (arXiv link to follow).</p>
+</section>
+</main>
+</div>
+<footer>Graduate is released under Apache-2.0. Every number on this page traces to a dated pre-registration and its appended result in the research repository.</footer>
+<script>
+(function(){
+  var ids=['delta','flip','ntask','sd']; var out=document.getElementById('out');
+  function upd(){
+    var d=parseFloat(document.getElementById('delta').value)/100, c=parseFloat(document.getElementById('flip').value),
+        n=parseFloat(document.getElementById('ntask').value), sd=parseFloat(document.getElementById('sd').value);
+    if(!(d>0&&c>=0&&n>0&&sd>0)){ out.textContent=''; return; }
+    var need=Math.ceil(Math.max(3/d, Math.pow(1.645+0.84,2)*c/(d*d)));
+    var mde=Math.max(3/n, 2.485*sd/Math.sqrt(n));
+    var verdict = mde<=d ? 'this many tasks can decide a '+Math.round(d*100)+'-point margin' : 'cannot be decided with this evidence: the smallest detectable harm is above the margin';
+    out.innerHTML='States needed at this margin and flip rate: <b>'+need+'</b><br>Smallest detectable harm with '+n+' tasks: <b>'+(100*mde).toFixed(1)+' points</b> — '+verdict+'.';
+  }
+  ids.forEach(function(i){ document.getElementById(i).addEventListener('input',upd); }); upd();
+})();
+</script>
+</body>
+</html>
