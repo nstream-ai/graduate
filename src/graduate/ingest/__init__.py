@@ -20,7 +20,8 @@ def ingest(
     convert = PRESETS[preset]
     src = source or f"{preset}:{Path(path).name}"
     for rec in read_records(path, limit):
-        yield convert(rec, src)
+        out = convert(rec, src)
+        yield from out if isinstance(out, list) else [out]
 
 
 __all__ = [

@@ -19,6 +19,15 @@ All notable changes to this project are listed here. Versions follow
   same traces reuses it, and the card names the cache.
 - A diagnostic table by the reference's action, beside the router table, in `card.md` and
   `card.json` (`by_reference_action`).
+- Ingest presets for trace stores: `otel-genai` (OpenTelemetry GenAI spans: Google ADK including
+  its legacy `call_llm` spans, Cloud Trace, Langfuse, Phoenix, Datadog; one conversation per
+  agent, with its usage) and `mlflow` (MLflow traces, e.g. from Databricks; the shape of the
+  inputs is sniffed: OpenAI chat, OTel parts or Gemini). A trace whose content capture is off or
+  redacted is refused with that reason.
+- An ingest completeness block at the top of the card: conversations without a system prompt or
+  tool list, tool calls without a result, redacted or empty inputs, a logged input much longer
+  than the replayed prompt (missing context), a tool list over 3x the tools ever called, and
+  exact and near-duplicate conversations.
 
 ### Fixed
 - The assistant's tool-call ids are kept through ingest and replay; an id is made up only for a
