@@ -46,7 +46,8 @@ def to_chat(messages: Iterable[Message], *, reasoning: bool = False) -> Chat:
     return out
 
 
-def tools_spec(session: Session) -> list[dict[str, Any]]:
+def tools_spec(session: Session, tools: Any = None) -> list[dict[str, Any]]:
+    """The session's tools (or `tools`, e.g. one call's own list) in the OpenAI format."""
     return [
         {
             "type": "function",
@@ -56,5 +57,5 @@ def tools_spec(session: Session) -> list[dict[str, Any]]:
                 "parameters": t.parameters or {"type": "object", "properties": {}},
             },
         }
-        for t in session.tools
+        for t in (session.tools if tools is None else tools)
     ]

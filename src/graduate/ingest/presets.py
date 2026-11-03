@@ -7,6 +7,7 @@ from collections.abc import Callable
 from typing import Any
 
 from graduate.core import Outcome, Session, Termination, Usage
+from graduate.ingest.converters.common import tool_schemas
 from graduate.ingest.converters.hermes import convert_sharegpt
 from graduate.ingest.converters.openai_chat import convert_messages
 
@@ -132,6 +133,32 @@ def tau2(sim: dict[str, Any], source: str) -> Session:
     return s
 
 
+def openai(r: dict[str, Any], source: str) -> Session:
+    """One conversation in the OpenAI chat format. `session_id` (else `id`) names it; an
+    assistant message may carry its own `agent_node`, `system` and `tools` (per-turn values in
+    multi-agent traces), which override the conversation's for that call."""
+    s = convert_messages(
+        r["messages"], source=source, session_id=r.get("session_id") or r.get("id"),
+        tools=r.get("tools"),
+    )  # fmt: skip
+    turns, prev = [], None  # per call: the first assistant message of its run
+    for m in r["messages"]:
+        role = str(m.get("role", "")).lower()
+        if role == "assistant" and prev != "assistant":
+            turns.append(m)
+        if role not in ("system", "developer"):
+            prev = role
+    if len(turns) == len(s.calls):
+        for c, m in zip(s.calls, turns, strict=True):
+            if m.get("agent_node"):
+                c.agent_node = str(m["agent_node"])
+            if m.get("system") is not None:
+                c.system = str(m["system"])
+            if m.get("tools") is not None:
+                c.tools = tool_schemas(m["tools"])
+    return s
+
+
 PRESETS: dict[str, Preset] = {
     "toucan": toucan,
     "nemotron": nemotron,
@@ -139,7 +166,5 @@ PRESETS: dict[str, Preset] = {
     "swe-rebench": swe_rebench,
     "hermes": hermes,
     "tau2": tau2,
-    "openai": lambda r, src: convert_messages(
-        r["messages"], source=src, session_id=r.get("id"), tools=r.get("tools")
-    ),
+    "openai": openai,
 }

@@ -5,6 +5,21 @@ All notable changes to this project are listed here. Versions follow
 
 ## [0.2.3] - unreleased
 
+### Added
+- `certify --level {args,tools,decision}` (default `args`): what counts as agreement. The card
+  prints the observed disagreement at all three levels per slice.
+- `--ignore-tools a,b` leaves auxiliary tools out of the comparison on both sides;
+  `--primary-tool X` compares only the calls to X when the reference calls it. The card lists
+  both.
+- Per-turn `agent_node`, `system` and `tools` on `Call` (multi-agent traces); slices use the
+  turn's node. The `openai` preset reads them from an assistant message, and reads `session_id`
+  (else `id`).
+- The reference's noise is measured once per reference and traces and cached
+  (`~/.cache/graduate/reference-noise`, or `--reference-noise-cache`); every candidate run on the
+  same traces reuses it, and the card names the cache.
+- A diagnostic table by the reference's action, beside the router table, in `card.md` and
+  `card.json` (`by_reference_action`).
+
 ### Fixed
 - The assistant's tool-call ids are kept through ingest and replay; an id is made up only for a
   call logged without one, and the tool result that answers it gets the same id (before, every
