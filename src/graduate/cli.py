@@ -139,7 +139,8 @@ def ask(
     temperature: float = 0.0,
     timeout: float = 300,
 ) -> dict[str, Any]:
-    """One chat completion; returns {"text", "calls"} (calls as {"name", "arguments"})."""
+    """One chat completion; returns {"text", "calls", "latency_ms", "usage"} (calls as
+    {"name", "arguments"}; usage as the server reports it)."""
     body = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": 1024}
     if tools:
         body["tools"] = tools
@@ -151,7 +152,10 @@ def ask(
             **({"Authorization": f"Bearer {api_key}"} if api_key else {}),
         },
     )
-    msg = post_json(req, timeout)["choices"][0]["message"]
+    t0 = time.monotonic()
+    resp = post_json(req, timeout)
+    latency = (time.monotonic() - t0) * 1000
+    msg = resp["choices"][0]["message"]
     calls = []
     for tc in msg.get("tool_calls") or []:
         f = tc.get("function") or {}
@@ -164,7 +168,19 @@ def ask(
     if not calls and text:  # a server without tool parsing: the call is in the text
         text, parsed = parse_completion(text, tools)
         calls = [{"name": c.name, "arguments": c.arguments} for c in parsed]
-    return {"text": text, "calls": calls}
+    return {"text": text, "calls": calls, "latency_ms": latency, "usage": usage_of(resp)}
+
+
+def usage_of(resp: dict[str, Any]) -> dict[str, int]:
+    """Input, output and reasoning tokens as an OpenAI-compatible server reports them."""
+    u = resp.get("usage") or {}
+    details = u.get("completion_tokens_details") or {}
+    out = {
+        "input_tokens": u.get("prompt_tokens"),
+        "output_tokens": u.get("completion_tokens"),
+        "reasoning_tokens": details.get("reasoning_tokens"),
+    }
+    return {k: int(v) for k, v in out.items() if isinstance(v, (int, float))}
 
 
 COMPLETION_TOKENS = 256  # new tokens per call on the completions path, as in the research path
@@ -207,12 +223,15 @@ def ask_completions(
             **({"Authorization": f"Bearer {api_key}"} if api_key else {}),
         },
     )
-    text = post_json(req, timeout)["choices"][0]["text"]
-    content, parsed = parse_completion(text, tools)
-    return {"text": content, "calls": [{"name": c.name, "arguments": c.arguments} for c in parsed]}
+    t0 = time.monotonic()
+    resp = post_json(req, timeout)
+    latency = (time.monotonic() - t0) * 1000
+    content, parsed = parse_completion(resp["choices"][0]["text"], tools)
+    return {"text": content, "calls": [{"name": c.name, "arguments": c.arguments} for c in parsed],
+            "latency_ms": latency, "usage": usage_of(resp)}  # fmt: skip
 
 
-def states(sessions) -> tuple[list[dict[str, Any]], Counter]:
+def states(sessions, carry_reasoning: bool = False) -> tuple[list[dict[str, Any]], Counter]:
     """Every reference call with its input state; calls naming a tool the agent does not have, or
     with unparsable arguments, are reference mistakes and left out (counted)."""
     out, skipped = [], Counter()
@@ -248,8 +267,13 @@ def states(sessions) -> tuple[list[dict[str, Any]], Counter]:
                     "node": c.agent_node or s.agent_node or "agent",
                     "tools": tools,
                     "schemas": schemas,
-                    "messages": openai_messages(system + to_chat(s.call_input(c))),
-                    "chat": system + to_chat(s.call_input(c)),  # for --prompt-mode completions
+                    # prior turns' reasoning only with --carry-reasoning; the re-asked turn's
+                    # own output (and its reasoning) is never in its input
+                    "messages": openai_messages(
+                        system + to_chat(s.call_input(c), reasoning=carry_reasoning)
+                    ),
+                    "chat": system + to_chat(s.call_input(c), reasoning=carry_reasoning),
+                    "reference_usage": c.usage.model_dump(exclude_none=True) if c.usage else {},
                     "reference": [{"name": t.name, "arguments": t.arguments} for t in ref],
                 }
             )
@@ -417,6 +441,63 @@ def level_line(decision: dict[str, Any]) -> str:
         out += (f" Primary tool: {decision['primary_tool']} (when the reference calls it, only "
                 "calls to it are compared).")  # fmt: skip
     return out + "\n\n"
+
+
+def replay_stats(rows: list[dict[str, Any]], proposals: dict[str, dict]) -> dict[str, Any]:
+    """Latency percentiles and mean tokens per call of the candidate as replayed, beside the
+    reference's logged tokens on the same calls."""
+    ps = [proposals[r["key"]] for r in rows]
+    lat = sorted(p["latency_ms"] for p in ps if p.get("latency_ms") is not None)
+
+    def pct(q: float) -> float | None:
+        return lat[min(len(lat) - 1, int(q * len(lat)))] if lat else None
+
+    def mean(xs: list[Any]) -> float | None:
+        xs = [x for x in xs if x is not None]
+        return sum(xs) / len(xs) if xs else None
+
+    tok = ("input_tokens", "output_tokens", "reasoning_tokens")
+    return {
+        "latency_ms_p50": pct(0.5),
+        "latency_ms_p95": pct(0.95),
+        "candidate": {k: mean([(p.get("usage") or {}).get(k) for p in ps]) for k in tok},
+        "reference_logged": {
+            k: mean([r.get("reference_usage", {}).get(k) for r in rows]) for k in tok
+        },
+    }
+
+
+def replay_line(stats: dict[str, Any]) -> str:
+    if stats["latency_ms_p50"] is None:
+        return ""
+    c, r = stats["candidate"], stats["reference_logged"]
+
+    def tokens(d: dict[str, Any]) -> str:
+        return ", ".join(f"{d[k]:,.0f} {k.split('_')[0]}" for k in d if d[k] is not None) or "-"
+
+    return (f"Latency and tokens (replay endpoint, not production): P50 "
+            f"{stats['latency_ms_p50']:,.0f} ms, P95 {stats['latency_ms_p95']:,.0f} ms per call; "
+            f"candidate tokens per call {tokens(c)}; the reference's logged tokens on the same "
+            f"calls {tokens(r)}.\n\n")  # fmt: skip
+
+
+def reasoning_line(carry: bool, stats: dict[str, Any]) -> str:
+    rt = stats["candidate"].get("reasoning_tokens")
+    return (
+        "Reasoning: never scored. The reference's reasoning from earlier turns is "
+        + ("replayed in the history (--carry-reasoning)" if carry else "left out of the history")
+        + "; at the re-asked turn it is never shown (it would give the decision away)."
+        + (f" Candidate reasoning: {rt:,.0f} tokens per call." if rt else "")
+        + "\n\n"
+    )
+
+
+ALL_HELD = (
+    "**Every slice is held by reference noise.** Try `--level tools`: free-text arguments "
+    "(messages, summaries) cannot certify by agreement when the reference words them differently "
+    "each time. Certification by effect needs an environment that can replay a logged state "
+    "(`graduate claim-b`).\n\n"
+)
 
 
 def level_tables(decision: dict[str, Any]) -> str:
@@ -866,6 +947,12 @@ def main(argv: list[str] | None = None) -> None:
         "--fresh", action="store_true", help="ignore cached answers in --out and ask again"
     )
     c.add_argument(
+        "--carry-reasoning",
+        action="store_true",
+        help="replay the reference's reasoning from earlier turns in the history (default: "
+        "left out); the re-asked turn's own reasoning is never shown",
+    )
+    c.add_argument(
         "--level",
         choices=LEVELS,
         default="args",
@@ -932,7 +1019,7 @@ def main(argv: list[str] | None = None) -> None:
 
     try:
         sessions = list(ingest(args.traces, args.preset, limit=args.limit))
-        rows, skipped = states(sessions)
+        rows, skipped = states(sessions, args.carry_reasoning)
     except FileNotFoundError:
         _fail(f"no such file: {args.traces}")
     except json.JSONDecodeError as e:
@@ -1085,6 +1172,8 @@ def main(argv: list[str] | None = None) -> None:
         args.primary_tool,
     )
     card, calibration = plan_history(card, out / "planner.json", fresh=args.fresh)
+    stats = replay_stats(rows, proposals)
+    all_held = bool(noisy) and all(r.slice in noisy for r in card.slices)
     report = {
         "candidate": args.model,
         "candidate_path": candidate_path(args),
@@ -1112,6 +1201,8 @@ def main(argv: list[str] | None = None) -> None:
         "ignored_tools": sorted(ignore),
         "primary_tool": args.primary_tool,
         "disagreement_by_level": decision["by_level"],
+        "replay": stats,
+        "carry_reasoning": args.carry_reasoning,
         "by_reference_action": decision["by_reference_action"],
         "too_noisy_to_certify_by_agreement": sorted(noisy),
     }
@@ -1131,7 +1222,10 @@ def main(argv: list[str] | None = None) -> None:
             else ""
         )
         + contract_line(decision["reference_contract"])
+        + (ALL_HELD if all_held else "")
         + level_line(decision)
+        + replay_line(stats)
+        + reasoning_line(args.carry_reasoning, stats)
         + f"{len(rows):,} reference calls; certified share **{card.certified_call_share:.1%}** "
         f"at alpha {args.alpha:g}, confidence {1 - args.delta:.0%}.\n\n"
         f"Replied instead of acting: {decision['replied_instead_of_acting']:.1%}; acted "
