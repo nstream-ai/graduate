@@ -28,6 +28,9 @@ All notable changes to this project are listed here. Versions follow
   tool list, tool calls without a result, redacted or empty inputs, a logged input much longer
   than the replayed prompt (missing context), a tool list over 3x the tools ever called, and
   exact and near-duplicate conversations.
+- Conversations that repeat an earlier one exactly are dropped before certification (a repeat
+  counts the same evidence twice); `--keep-duplicates` keeps them. Near-duplicates are counted,
+  not dropped.
 
 - `proposals.jsonl` records each answer's latency and usage; the card gives P50 and P95
   latency and tokens per call beside the reference's logged tokens, labelled "replay endpoint,

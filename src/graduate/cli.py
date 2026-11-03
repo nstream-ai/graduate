@@ -48,7 +48,7 @@ from graduate.certify.causes import (
 )
 from graduate.core import ToolCall, action_of, agree, is_valid, routing_slice
 from graduate.core.canonical import stable_hash
-from graduate.core.dedup import near_duplicate_sessions
+from graduate.core.dedup import dedupe_sessions, near_duplicate_sessions
 from graduate.core.slicing import action_type_and_tool
 from graduate.ingest import PRESETS, ingest
 from graduate.ingest.validate import completeness, completeness_lines
@@ -947,6 +947,12 @@ def main(argv: list[str] | None = None) -> None:
         "--fresh", action="store_true", help="ignore cached answers in --out and ask again"
     )
     c.add_argument(
+        "--keep-duplicates",
+        action="store_true",
+        help="keep conversations that repeat an earlier one exactly (default: dropped, since "
+        "a repeat counts the same evidence twice)",
+    )
+    c.add_argument(
         "--carry-reasoning",
         action="store_true",
         help="replay the reference's reasoning from earlier turns in the history (default: "
@@ -1019,6 +1025,9 @@ def main(argv: list[str] | None = None) -> None:
 
     try:
         sessions = list(ingest(args.traces, args.preset, limit=args.limit))
+        dropped = 0
+        if not args.keep_duplicates:  # a repeated conversation would count its evidence twice
+            sessions, dropped = dedupe_sessions(sessions)
         rows, skipped = states(sessions, args.carry_reasoning)
     except FileNotFoundError:
         _fail(f"no such file: {args.traces}")
@@ -1031,7 +1040,9 @@ def main(argv: list[str] | None = None) -> None:
         )
     complete = completeness(sessions)
     dups = near_duplicate_sessions(sessions)
-    complete_md = "\n".join(completeness_lines(complete, *dups))
+    if dropped:
+        dups = (dropped, dups[1])
+    complete_md = "\n".join(completeness_lines(complete, *dups, dropped=bool(dropped)))
     print(f"ingest completeness:\n{complete_md}", file=sys.stderr)
     left = ", ".join(f"{n} {k}" for k, n in sorted(skipped.items())) or "none"
     print(f"{len(rows):,} reference calls (left out: {left})", file=sys.stderr)
@@ -1192,6 +1203,7 @@ def main(argv: list[str] | None = None) -> None:
         "ingest_completeness": {
             **complete,
             "exact_duplicate_conversations": dups[0],
+            "exact_duplicates_dropped": bool(dropped),
             "near_duplicate_conversations": dups[1],
         },
         "decision_split": decision,

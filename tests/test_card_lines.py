@@ -59,3 +59,21 @@ def test_every_slice_held_suggests_level_tools(tmp_path: Path) -> None:
         cand.shutdown()
         ref.shutdown()
     assert "Every slice is held by reference noise" in (tmp_path / "r" / "card.md").read_text()
+
+
+def test_exact_duplicate_conversations_are_dropped(tmp_path: Path) -> None:
+    t = _trace(0, [_call("cancel", id=0)])
+    path = tmp_path / "t.jsonl"
+    path.write_text("\n".join(json.dumps({**t, "id": f"s{i}"}) for i in range(3)))
+    server, url, _ = _serve([_call("cancel", id=0)])
+    try:
+        for out, extra in (("d", []), ("k", ["--keep-duplicates"])):
+            main(["certify", str(path), "--base-url", url, "--model", "m",
+                  "--out", str(tmp_path / out), *extra])  # fmt: skip
+    finally:
+        server.shutdown()
+    dropped = json.loads((tmp_path / "d" / "card.json").read_text())
+    kept = json.loads((tmp_path / "k" / "card.json").read_text())
+    assert (dropped["reference_calls"], kept["reference_calls"]) == (1, 3)
+    assert dropped["ingest_completeness"]["exact_duplicate_conversations"] == 2
+    assert "were dropped" in (tmp_path / "d" / "card.md").read_text()
