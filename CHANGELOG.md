@@ -3,6 +3,19 @@
 All notable changes to this project are listed here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.3] - unreleased
+
+### Fixed
+- The assistant's tool-call ids are kept through ingest and replay; an id is made up only for a
+  call logged without one, and the tool result that answers it gets the same id (before, every
+  call got a new `call_n` id while tool results kept the originals, which strict servers reject).
+- Provider fields on a tool call (e.g. Gemini's `extra_content.google.thought_signature`, which
+  Vertex requires on replay) are kept on `ToolCall.extra` and sent back unchanged.
+- A reply whose `content` is a list of blocks is read as its text blocks; reasoning blocks are
+  dropped.
+- Requests are retried with exponential backoff on 429, 500, 502, 503 and 504 (6 attempts,
+  honouring `Retry-After`).
+
 ## [0.2.2] - 2026-10-25
 
 ### Added

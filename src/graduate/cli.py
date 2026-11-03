@@ -26,7 +26,10 @@ import contextlib
 import dataclasses
 import json
 import os
+import random
 import sys
+import time
+import urllib.error
 import urllib.request
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
@@ -52,7 +55,9 @@ from graduate.prompting.decode import parse_completion
 
 def openai_messages(chat: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Chat turns in the strict OpenAI wire format: string arguments, call ids, matched tool
-    results."""
+    results. The logged call ids are kept; an id is made up only for a call that has none, and
+    then the tool result that answers it gets the same id. Provider fields on a call (`extra`)
+    pass through unchanged."""
     out, pending, n = [], [], 0
     for m in chat:
         m = dict(m)
@@ -63,6 +68,9 @@ def openai_messages(chat: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 cid = tc.get("id") or f"call_{n}"
                 n += 1
                 args = f.get("arguments")
+                extra = {k: v for k, v in tc.items() if k not in ("id", "type", "function")}
+                if "function" not in tc:
+                    extra = {k: v for k, v in extra.items() if k not in ("name", "arguments")}
                 calls.append(
                     {
                         "id": cid,
@@ -71,17 +79,52 @@ def openai_messages(chat: list[dict[str, Any]]) -> list[dict[str, Any]]:
                             "name": f["name"],
                             "arguments": args if isinstance(args, str) else json.dumps(args or {}),
                         },
+                        **extra,
                     }
                 )
                 pending.append(cid)
             m["tool_calls"] = calls
             m["content"] = m.get("content") or None
         elif m["role"] == "tool":
-            m.setdefault("tool_call_id", pending.pop(0) if pending else f"call_{n}")
-            if m["tool_call_id"] in pending:
-                pending.remove(m["tool_call_id"])
+            tid = m.get("tool_call_id")
+            if tid not in pending:  # missing, or the call's id was made up: answer the oldest
+                tid = pending[0] if pending else tid or f"call_{n}"
+            m["tool_call_id"] = tid
+            if tid in pending:
+                pending.remove(tid)
         out.append(m)
     return out
+
+
+RETRY_STATUS = (429, 500, 502, 503, 504)
+ATTEMPTS = 6
+
+
+def post_json(req: urllib.request.Request, timeout: float) -> dict[str, Any]:
+    """POST with exponential backoff (1, 2, 4, 8, 16 s, with jitter) on rate limits and server
+    errors; any other error, or the sixth failure, is raised."""
+    for attempt in range(ATTEMPTS):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return json.load(r)
+        except urllib.error.HTTPError as e:
+            if e.code not in RETRY_STATUS or attempt == ATTEMPTS - 1:
+                raise
+            wait = float(e.headers.get("Retry-After") or 0) if e.headers else 0.0
+            time.sleep(max(wait, 2**attempt * (0.5 + random.random())))
+    raise AssertionError("unreachable")
+
+
+def text_of(content: Any) -> str:
+    """A reply's text: a string, or a list of content blocks (text / output_text kept, reasoning
+    and other blocks dropped)."""
+    if isinstance(content, list):
+        return "".join(
+            str(b.get("text") or "")
+            for b in content
+            if isinstance(b, dict) and b.get("type") in ("text", "output_text")
+        )
+    return content or ""
 
 
 def ask(
@@ -105,8 +148,7 @@ def ask(
             **({"Authorization": f"Bearer {api_key}"} if api_key else {}),
         },
     )
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        msg = json.load(r)["choices"][0]["message"]
+    msg = post_json(req, timeout)["choices"][0]["message"]
     calls = []
     for tc in msg.get("tool_calls") or []:
         f = tc.get("function") or {}
@@ -115,7 +157,7 @@ def ask(
         except ValueError:
             args = None
         calls.append({"name": f.get("name", "?"), "arguments": args})
-    text = msg.get("content") or ""
+    text = text_of(msg.get("content"))
     if not calls and text:  # a server without tool parsing: the call is in the text
         text, parsed = parse_completion(text, tools)
         calls = [{"name": c.name, "arguments": c.arguments} for c in parsed]
@@ -162,8 +204,7 @@ def ask_completions(
             **({"Authorization": f"Bearer {api_key}"} if api_key else {}),
         },
     )
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        text = json.load(r)["choices"][0]["text"]
+    text = post_json(req, timeout)["choices"][0]["text"]
     content, parsed = parse_completion(text, tools)
     return {"text": content, "calls": [{"name": c.name, "arguments": c.arguments} for c in parsed]}
 

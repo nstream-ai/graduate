@@ -44,6 +44,9 @@ class ToolCall(_Model):
     raw: str = ""
     parse: ParseStatus = "ok"
     repairs: list[str] = Field(default_factory=list)
+    # provider fields on the call, passed back unchanged (e.g. Gemini's
+    # extra_content.google.thought_signature, which Vertex requires on replay)
+    extra: dict[str, Any] = Field(default_factory=dict)
 
 
 class Message(_Model):
