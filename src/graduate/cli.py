@@ -48,8 +48,10 @@ from graduate.certify.causes import (
 )
 from graduate.core import ToolCall, action_of, agree, is_valid, routing_slice
 from graduate.core.canonical import stable_hash
+from graduate.core.dedup import near_duplicate_sessions
 from graduate.core.slicing import action_type_and_tool
 from graduate.ingest import PRESETS, ingest
+from graduate.ingest.validate import completeness, completeness_lines
 from graduate.prompting.chat import to_chat, tools_spec
 from graduate.prompting.decode import parse_completion
 
@@ -929,7 +931,8 @@ def main(argv: list[str] | None = None) -> None:
     ref_key = _key(args.reference_api_key_env, "--reference-api-key-env")
 
     try:
-        rows, skipped = states(ingest(args.traces, args.preset, limit=args.limit))
+        sessions = list(ingest(args.traces, args.preset, limit=args.limit))
+        rows, skipped = states(sessions)
     except FileNotFoundError:
         _fail(f"no such file: {args.traces}")
     except json.JSONDecodeError as e:
@@ -939,6 +942,10 @@ def main(argv: list[str] | None = None) -> None:
             f"{args.traces} does not look like --preset {args.preset} ({type(e).__name__}: {e}); "
             "check --preset (see README: trace formats)"
         )
+    complete = completeness(sessions)
+    dups = near_duplicate_sessions(sessions)
+    complete_md = "\n".join(completeness_lines(complete, *dups))
+    print(f"ingest completeness:\n{complete_md}", file=sys.stderr)
     left = ", ".join(f"{n} {k}" for k, n in sorted(skipped.items())) or "none"
     print(f"{len(rows):,} reference calls (left out: {left})", file=sys.stderr)
     if not rows:
@@ -1093,6 +1100,11 @@ def main(argv: list[str] | None = None) -> None:
         "normaliser": {"version": NORMALISER_VERSION, "rule": NORMALISER},
         "format_only_counted_as_agreement": decision["forgiven_format_only"],
         "reference_contract": decision["reference_contract"],
+        "ingest_completeness": {
+            **complete,
+            "exact_duplicate_conversations": dups[0],
+            "near_duplicate_conversations": dups[1],
+        },
         "decision_split": decision,
         "reference_self_disagreement": noise,
         "reference_noise_cache": str(noise_cache) if noise_cache else None,
@@ -1112,6 +1124,7 @@ def main(argv: list[str] | None = None) -> None:
     md = (
         f"# Graduate report card: {args.model}\n\n"
         + f"Candidate path: {candidate_path(args)}.\n\n"
+        + f"**Ingest completeness** ({args.preset}):\n{complete_md}\n\n"
         + (
             f"**{errors:,} requests failed** and are left out; rerun to retry.\n\n"
             if errors

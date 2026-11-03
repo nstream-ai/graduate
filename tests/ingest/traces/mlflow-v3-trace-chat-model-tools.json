@@ -1,0 +1,112 @@
+{
+ "info": {
+  "trace_id": "tr-63076d0c1b90f1df0970f897dc428bd6",
+  "trace_location": {
+   "type": "MLFLOW_EXPERIMENT",
+   "mlflow_experiment": {
+    "experiment_id": "0"
+   }
+  },
+  "request_time": "2026-10-30T10:27:41.271Z",
+  "execution_duration_ms": 2100,
+  "state": "OK",
+  "trace_metadata": {
+   "mlflow.trace_schema.version": "3",
+   "mlflow.traceInputs": "{\"request\": {\"messages\": [{\"role\": \"system\", \"content\": \"You are a joke assistant with one tool.\"}, {\"role\": \"user\", \"content\": \"tell me a joke in 50 words\"}], \"metadata\": {\"session_id\": \"sess-0001\"}}}",
+   "mlflow.traceOutputs": "{\"content\": \"Why did the scarecrow win an award? Because he was outstanding in his field!\", \"refusal\": null, \"role\": \"assistant\", \"function_call\": null, \"tool_calls\": null}"
+  },
+  "tags": {
+   "mlflow.traceName": "agent",
+   "mlflow.source.type": "NOTEBOOK"
+  },
+  "assessments": []
+ },
+ "data": {
+  "spans": [
+   {
+    "name": "agent",
+    "context": {
+     "span_id": "0d48a6670588966b",
+     "trace_id": "63076d0c1b90f1df0970f897dc428bd6"
+    },
+    "parent_id": null,
+    "start_time": 100,
+    "end_time": 2200,
+    "status_code": "OK",
+    "status_message": "",
+    "attributes": {
+     "mlflow.traceRequestId": "\"tr-63076d0c1b90f1df0970f897dc428bd6\"",
+     "mlflow.spanType": "\"AGENT\"",
+     "mlflow.spanInputs": "{\"request\": {\"messages\": [{\"role\": \"system\", \"content\": \"You are a joke assistant with one tool.\"}, {\"role\": \"user\", \"content\": \"tell me a joke in 50 words\"}], \"metadata\": {\"session_id\": \"sess-0001\"}}}",
+     "mlflow.spanOutputs": "{\"content\": \"Why did the scarecrow win an award? Because he was outstanding in his field!\", \"refusal\": null, \"role\": \"assistant\", \"function_call\": null, \"tool_calls\": null}"
+    },
+    "events": []
+   },
+   {
+    "name": "Completions",
+    "context": {
+     "span_id": "6fc32f36ef591f60",
+     "trace_id": "63076d0c1b90f1df0970f897dc428bd6"
+    },
+    "parent_id": "0d48a6670588966b",
+    "start_time": 300,
+    "end_time": 900,
+    "status_code": "OK",
+    "status_message": "",
+    "attributes": {
+     "mlflow.traceRequestId": "\"tr-63076d0c1b90f1df0970f897dc428bd6\"",
+     "mlflow.spanType": "\"CHAT_MODEL\"",
+     "mlflow.spanInputs": "{\"model\": \"gpt-4o-mini\", \"messages\": [{\"role\": \"system\", \"content\": \"You are a joke assistant with one tool.\"}, {\"role\": \"user\", \"content\": \"tell me a joke in 50 words\"}], \"tools\": [{\"type\": \"function\", \"function\": {\"name\": \"tell_joke\", \"description\": \"Tells a joke\", \"parameters\": {\"type\": \"object\", \"properties\": {\"joke_length\": {\"type\": \"integer\", \"description\": \"The length of the joke in words\"}}, \"required\": [\"joke_length\"]}}}], \"temperature\": 0}",
+     "mlflow.spanOutputs": "{\"id\": \"chatcmpl-first\", \"choices\": [{\"finish_reason\": \"tool_calls\", \"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"\", \"tool_calls\": [{\"id\": \"1\", \"type\": \"function\", \"function\": {\"name\": \"tell_joke\", \"arguments\": \"{\\\"joke_length\\\": 50}\"}}]}}], \"model\": \"gpt-4o-mini-2024-07-18\", \"usage\": {\"prompt_tokens\": 40, \"completion_tokens\": 12, \"total_tokens\": 52}}",
+     "mlflow.chat.tools": "[{\"type\": \"function\", \"function\": {\"name\": \"tell_joke\", \"description\": \"Tells a joke\", \"parameters\": {\"type\": \"object\", \"properties\": {\"joke_length\": {\"type\": \"integer\", \"description\": \"The length of the joke in words\"}}, \"required\": [\"joke_length\"]}}}]",
+     "mlflow.chat.tokenUsage": "{\"input_tokens\": 40, \"output_tokens\": 12, \"total_tokens\": 52}",
+     "mlflow.llm.model": "\"gpt-4o-mini-2024-07-18\""
+    },
+    "events": []
+   },
+   {
+    "name": "tell_joke",
+    "context": {
+     "span_id": "a1b2c3d4e5f60718",
+     "trace_id": "63076d0c1b90f1df0970f897dc428bd6"
+    },
+    "parent_id": "0d48a6670588966b",
+    "start_time": 950,
+    "end_time": 1000,
+    "status_code": "OK",
+    "status_message": "",
+    "attributes": {
+     "mlflow.traceRequestId": "\"tr-63076d0c1b90f1df0970f897dc428bd6\"",
+     "mlflow.spanType": "\"TOOL\"",
+     "mlflow.spanInputs": "{\"joke_length\": 50}",
+     "mlflow.spanOutputs": "\"Why did the scarecrow win an award? Because he was outstanding in his field!\""
+    },
+    "events": []
+   },
+   {
+    "name": "Completions",
+    "context": {
+     "span_id": "7e8f9a0b1c2d3e4f",
+     "trace_id": "63076d0c1b90f1df0970f897dc428bd6"
+    },
+    "parent_id": "0d48a6670588966b",
+    "start_time": 1100,
+    "end_time": 2100,
+    "status_code": "OK",
+    "status_message": "",
+    "attributes": {
+     "mlflow.traceRequestId": "\"tr-63076d0c1b90f1df0970f897dc428bd6\"",
+     "mlflow.spanType": "\"CHAT_MODEL\"",
+     "mlflow.spanInputs": "{\"model\": \"gpt-4o-mini\", \"messages\": [{\"role\": \"system\", \"content\": \"You are a joke assistant with one tool.\"}, {\"role\": \"user\", \"content\": \"tell me a joke in 50 words\"}, {\"role\": \"assistant\", \"content\": \"\", \"tool_calls\": [{\"id\": \"1\", \"type\": \"function\", \"function\": {\"arguments\": \"{\\\"joke_length\\\": 50}\", \"name\": \"tell_joke\"}}]}, {\"role\": \"tool\", \"content\": \"Why did the scarecrow win an award? Because he was outstanding in his field!\", \"tool_call_id\": \"1\"}], \"tools\": [{\"type\": \"function\", \"function\": {\"name\": \"tell_joke\", \"description\": \"Tells a joke\", \"parameters\": {\"type\": \"object\", \"properties\": {\"joke_length\": {\"type\": \"integer\", \"description\": \"The length of the joke in words\"}}, \"required\": [\"joke_length\"]}}}], \"temperature\": 0}",
+     "mlflow.spanOutputs": "{\"id\": \"chatcmpl-A8HdoWt2DsJgtZoxjjAcPdx01jkul\", \"choices\": [{\"finish_reason\": \"stop\", \"index\": 0, \"logprobs\": null, \"message\": {\"content\": \"Why did the scarecrow win an award? Because he was outstanding in his field!\", \"refusal\": null, \"role\": \"assistant\", \"function_call\": null, \"tool_calls\": null}}], \"created\": 1726537800, \"model\": \"gpt-4o-mini-2024-07-18\", \"object\": \"chat.completion\", \"usage\": {\"completion_tokens\": 68, \"prompt_tokens\": 15, \"total_tokens\": 83, \"completion_tokens_details\": {\"reasoning_tokens\": 0}}}",
+     "mlflow.chat.tools": "[{\"type\": \"function\", \"function\": {\"name\": \"tell_joke\", \"description\": \"Tells a joke\", \"parameters\": {\"type\": \"object\", \"properties\": {\"joke_length\": {\"type\": \"integer\", \"description\": \"The length of the joke in words\"}}, \"required\": [\"joke_length\"]}}}]",
+     "mlflow.chat.tokenUsage": "{\"input_tokens\": 15, \"output_tokens\": 68, \"total_tokens\": 83}",
+     "mlflow.llm.model": "\"gpt-4o-mini-2024-07-18\""
+    },
+    "events": []
+   }
+  ],
+  "request": "{\"messages\": [{\"role\": \"system\", \"content\": \"You are a joke assistant with one tool.\"}, {\"role\": \"user\", \"content\": \"tell me a joke in 50 words\"}]}",
+  "response": "{\"content\": \"Why did the scarecrow win an award? Because he was outstanding in his field!\", \"refusal\": null, \"role\": \"assistant\", \"function_call\": null, \"tool_calls\": null}"
+ }
+}
