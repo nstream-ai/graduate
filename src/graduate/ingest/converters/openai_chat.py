@@ -24,7 +24,12 @@ def _tool_calls(m: dict[str, Any]) -> list[ToolCall]:
     out = []
     for tc in m.get("tool_calls") or []:
         fn = tc.get("function", tc)
-        out.append(make_tool_call(fn.get("name"), fn.get("arguments"), id=tc.get("id")))
+        extra = {k: v for k, v in tc.items() if k not in ("id", "type", "function", "index")}
+        if "function" not in tc:  # a flat call: its own fields are not extras
+            extra = {k: v for k, v in extra.items() if k not in ("name", "arguments")}
+        out.append(
+            make_tool_call(fn.get("name"), fn.get("arguments"), id=tc.get("id"), extra=extra)
+        )
     fc = m.get("function_call")
     if fc:
         out.append(make_tool_call(fc.get("name"), fc.get("arguments")))

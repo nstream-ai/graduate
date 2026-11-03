@@ -15,7 +15,10 @@ Chat = list[dict[str, Any]]
 
 
 def _tool_call(tc: Any) -> dict[str, Any]:
-    return {"type": "function", "function": {"name": tc.name, "arguments": tc.arguments or {}}}
+    d = {"type": "function", "function": {"name": tc.name, "arguments": tc.arguments or {}}}
+    if tc.id:
+        d["id"] = tc.id
+    return {**d, **tc.extra}
 
 
 def to_chat(messages: Iterable[Message], *, reasoning: bool = False) -> Chat:

@@ -75,11 +75,21 @@ def parse_arguments(raw: Any) -> tuple[dict[str, Any] | None, ParseStatus, list[
     return value, ("repaired" if repairs else "ok"), repairs
 
 
-def make_tool_call(name: Any, arguments: Any, *, id: str | None = None, raw: str = "") -> ToolCall:
+def make_tool_call(
+    name: Any,
+    arguments: Any,
+    *,
+    id: str | None = None,
+    raw: str = "",
+    extra: dict[str, Any] | None = None,
+) -> ToolCall:
     args, status, repairs = parse_arguments(arguments)
     if not raw:
         raw = arguments if isinstance(arguments, str) else json.dumps(arguments, default=str)
-    return ToolCall(id=id, name=str(name), arguments=args, raw=raw, parse=status, repairs=repairs)
+    return ToolCall(
+        id=id, name=str(name), arguments=args, raw=raw, parse=status, repairs=repairs,
+        extra=extra or {},
+    )  # fmt: skip
 
 
 def tool_call_from_text(raw: str, *, id: str | None = None) -> ToolCall:
