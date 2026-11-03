@@ -47,8 +47,11 @@ from graduate.certify.causes import (
     redact,
 )
 from graduate.core import ToolCall, action_of, agree, is_valid, routing_slice
+from graduate.core.canonical import stable_hash
+from graduate.core.dedup import dedupe_sessions, near_duplicate_sessions
 from graduate.core.slicing import action_type_and_tool
 from graduate.ingest import PRESETS, ingest
+from graduate.ingest.validate import completeness, completeness_lines
 from graduate.prompting.chat import to_chat, tools_spec
 from graduate.prompting.decode import parse_completion
 
@@ -136,7 +139,8 @@ def ask(
     temperature: float = 0.0,
     timeout: float = 300,
 ) -> dict[str, Any]:
-    """One chat completion; returns {"text", "calls"} (calls as {"name", "arguments"})."""
+    """One chat completion; returns {"text", "calls", "latency_ms", "usage"} (calls as
+    {"name", "arguments"}; usage as the server reports it)."""
     body = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": 1024}
     if tools:
         body["tools"] = tools
@@ -148,7 +152,10 @@ def ask(
             **({"Authorization": f"Bearer {api_key}"} if api_key else {}),
         },
     )
-    msg = post_json(req, timeout)["choices"][0]["message"]
+    t0 = time.monotonic()
+    resp = post_json(req, timeout)
+    latency = (time.monotonic() - t0) * 1000
+    msg = resp["choices"][0]["message"]
     calls = []
     for tc in msg.get("tool_calls") or []:
         f = tc.get("function") or {}
@@ -161,7 +168,19 @@ def ask(
     if not calls and text:  # a server without tool parsing: the call is in the text
         text, parsed = parse_completion(text, tools)
         calls = [{"name": c.name, "arguments": c.arguments} for c in parsed]
-    return {"text": text, "calls": calls}
+    return {"text": text, "calls": calls, "latency_ms": latency, "usage": usage_of(resp)}
+
+
+def usage_of(resp: dict[str, Any]) -> dict[str, int]:
+    """Input, output and reasoning tokens as an OpenAI-compatible server reports them."""
+    u = resp.get("usage") or {}
+    details = u.get("completion_tokens_details") or {}
+    out = {
+        "input_tokens": u.get("prompt_tokens"),
+        "output_tokens": u.get("completion_tokens"),
+        "reasoning_tokens": details.get("reasoning_tokens"),
+    }
+    return {k: int(v) for k, v in out.items() if isinstance(v, (int, float))}
 
 
 COMPLETION_TOKENS = 256  # new tokens per call on the completions path, as in the research path
@@ -204,12 +223,15 @@ def ask_completions(
             **({"Authorization": f"Bearer {api_key}"} if api_key else {}),
         },
     )
-    text = post_json(req, timeout)["choices"][0]["text"]
-    content, parsed = parse_completion(text, tools)
-    return {"text": content, "calls": [{"name": c.name, "arguments": c.arguments} for c in parsed]}
+    t0 = time.monotonic()
+    resp = post_json(req, timeout)
+    latency = (time.monotonic() - t0) * 1000
+    content, parsed = parse_completion(resp["choices"][0]["text"], tools)
+    return {"text": content, "calls": [{"name": c.name, "arguments": c.arguments} for c in parsed],
+            "latency_ms": latency, "usage": usage_of(resp)}  # fmt: skip
 
 
-def states(sessions) -> tuple[list[dict[str, Any]], Counter]:
+def states(sessions, carry_reasoning: bool = False) -> tuple[list[dict[str, Any]], Counter]:
     """Every reference call with its input state; calls naming a tool the agent does not have, or
     with unparsable arguments, are reference mistakes and left out (counted)."""
     out, skipped = [], Counter()
@@ -218,9 +240,12 @@ def states(sessions) -> tuple[list[dict[str, Any]], Counter]:
     ] = {}  # the reference's tool contract, per conversation with a tool list
     violation_names: Counter = Counter()
     for s in sessions:
-        system = [{"role": "system", "content": s.system}] if s.system else []
-        tools, names = tools_spec(s), {t.name for t in s.tools}
         for c in s.calls:
+            # per-turn overrides (multi-agent traces): the call's own node, system and tools
+            sys_text = c.system if c.system is not None else s.system
+            system = [{"role": "system", "content": sys_text}] if sys_text else []
+            schemas = c.tools if c.tools is not None else s.tools
+            tools, names = tools_spec(s, schemas), {t.name for t in schemas}
             if c.produced_by != "teacher":
                 skipped["not_reference"] += 1
                 continue
@@ -239,11 +264,16 @@ def states(sessions) -> tuple[list[dict[str, Any]], Counter]:
                     "key": f"{s.session_id}:{c.index}",
                     "session": s.session_id,
                     "index": c.index,
-                    "node": s.agent_node or "agent",
+                    "node": c.agent_node or s.agent_node or "agent",
                     "tools": tools,
-                    "schemas": s.tools,
-                    "messages": openai_messages(system + to_chat(s.call_input(c))),
-                    "chat": system + to_chat(s.call_input(c)),  # for --prompt-mode completions
+                    "schemas": schemas,
+                    # prior turns' reasoning only with --carry-reasoning; the re-asked turn's
+                    # own output (and its reasoning) is never in its input
+                    "messages": openai_messages(
+                        system + to_chat(s.call_input(c), reasoning=carry_reasoning)
+                    ),
+                    "chat": system + to_chat(s.call_input(c), reasoning=carry_reasoning),
+                    "reference_usage": c.usage.model_dump(exclude_none=True) if c.usage else {},
                     "reference": [{"name": t.name, "arguments": t.arguments} for t in ref],
                 }
             )
@@ -266,6 +296,24 @@ def _action(calls: list[dict[str, Any]]):
     return action_of([ToolCall(name=c["name"], arguments=c.get("arguments")) for c in calls])
 
 
+LEVELS = ("args", "tools", "decision")
+
+
+def compared(
+    calls: list[dict[str, Any]],
+    reference: list[dict[str, Any]],
+    ignore: frozenset[str] = frozenset(),
+    primary: str | None = None,
+) -> list[dict[str, Any]]:
+    """The calls agreement is judged on: calls to ignored (auxiliary) tools removed and, when
+    the reference calls the primary tool, only calls to the primary tool kept, so auxiliary calls
+    do not mask agreement on the primary one."""
+    kept = [c for c in calls if c["name"] not in ignore]
+    if primary and any(c["name"] == primary for c in reference):
+        kept = [c for c in kept if c["name"] == primary]
+    return kept
+
+
 def certify(
     rows: list[dict[str, Any]],
     proposals: dict[str, dict],
@@ -276,24 +324,39 @@ def certify(
     normalise_args: bool = False,
     contract: dict[str, Any] | None = None,
     certify_text: bool = False,
+    level: str = "args",
+    ignore: frozenset[str] = frozenset(),
+    primary: str | None = None,
 ) -> tuple[Any, dict[str, Any], dict[str, Any]]:
     keys, sess, gates = [], [], {"disagree": [], "invalid": []}
+    by_level: dict[str, dict[str, list[bool]]] = {}  # slice -> level -> disagreements
+    by_ref: dict[str, dict[str, Any]] = {}  # the reference's action -> calls, sessions, wrong
     split = Counter()
     why: dict[str, Any] = {}  # slice -> {"causes": Counter, "example": first disagreeing call}
     forgiven: set[str] = set()
     for r in rows:
         p = proposals[r["key"]]
-        cand, ref = _action(p["calls"]), _action(r["reference"])
+        ref_calls = compared(r["reference"], r["reference"], ignore, primary)
+        cand_calls = compared(p["calls"], r["reference"], ignore, primary)
+        cand, ref = _action(cand_calls), _action(ref_calls)
         key = str(routing_slice(r["node"], cand, r["index"]))
         keys.append(key)
         sess.append(r["session"])
-        wrong = not agree(cand, ref, "args")
+        lv = by_level.setdefault(key, {k: [] for k in LEVELS})
+        for k in LEVELS:
+            lv[k].append(not agree(cand, ref, k))
+        wrong = not agree(cand, ref, level)
+        d = by_ref.setdefault(str(routing_slice(r["node"], ref, r["index"])),
+                              {"calls": 0, "sessions": set(), "disagree": 0})  # fmt: skip
+        d["calls"] += 1
+        d["sessions"].add(r["session"])
+        d["disagree"] += wrong
         if wrong:
-            c = cause(p["calls"], r["reference"])
+            c = cause(cand_calls, ref_calls)
             w = why.setdefault(key, {"causes": Counter(), "example": None})
             w["causes"][c] += 1
             if w["example"] is None:  # first disagreeing call in session order: deterministic
-                w["example"] = {"cause": c, **first_difference(p["calls"], r["reference"])}
+                w["example"] = {"cause": c, **first_difference(cand_calls, ref_calls)}
             if normalise_args and c == "format-only argument":
                 wrong = False
                 forgiven.add(key)
@@ -326,6 +389,16 @@ def certify(
         "agreement": 1 - sum(gates["disagree"]) / max(1, len(rows)),
     }
     decision["forgiven_format_only"] = sorted(forgiven)
+    decision["level"] = level
+    decision["ignored_tools"] = sorted(ignore)
+    decision["primary_tool"] = primary
+    decision["by_level"] = {k: {lvl: sum(v) / len(v) for lvl, v in lv.items()}
+                            for k, lv in by_level.items()}  # fmt: skip
+    decision["by_reference_action"] = {
+        k: {"calls": d["calls"], "sessions": len(d["sessions"]),
+            "disagreement": d["disagree"] / d["calls"]}
+        for k, d in sorted(by_ref.items(), key=lambda kv: -kv[1]["calls"])
+    }  # fmt: skip
     decision["reference_contract"] = contract or {
         "conversations_checked": 0,
         "admissible": True,
@@ -350,6 +423,99 @@ def certify(
             certified_token_share=0.0,
         )
     return card, decision, why
+
+
+LEVEL_TEXT = {
+    "args": "the same tools with the same arguments",
+    "tools": "the same tool names (arguments not compared)",
+    "decision": "the same decision, act or reply (tools and arguments not compared)",
+}
+
+
+def level_line(decision: dict[str, Any]) -> str:
+    out = f"Agreement level: **{decision['level']}**, {LEVEL_TEXT[decision['level']]}."
+    if decision["ignored_tools"]:
+        out += " Left out of the comparison (auxiliary): " + ", ".join(
+            decision["ignored_tools"]) + "."  # fmt: skip
+    if decision["primary_tool"]:
+        out += (f" Primary tool: {decision['primary_tool']} (when the reference calls it, only "
+                "calls to it are compared).")  # fmt: skip
+    return out + "\n\n"
+
+
+def replay_stats(rows: list[dict[str, Any]], proposals: dict[str, dict]) -> dict[str, Any]:
+    """Latency percentiles and mean tokens per call of the candidate as replayed, beside the
+    reference's logged tokens on the same calls."""
+    ps = [proposals[r["key"]] for r in rows]
+    lat = sorted(p["latency_ms"] for p in ps if p.get("latency_ms") is not None)
+
+    def pct(q: float) -> float | None:
+        return lat[min(len(lat) - 1, int(q * len(lat)))] if lat else None
+
+    def mean(xs: list[Any]) -> float | None:
+        xs = [x for x in xs if x is not None]
+        return sum(xs) / len(xs) if xs else None
+
+    tok = ("input_tokens", "output_tokens", "reasoning_tokens")
+    return {
+        "latency_ms_p50": pct(0.5),
+        "latency_ms_p95": pct(0.95),
+        "candidate": {k: mean([(p.get("usage") or {}).get(k) for p in ps]) for k in tok},
+        "reference_logged": {
+            k: mean([r.get("reference_usage", {}).get(k) for r in rows]) for k in tok
+        },
+    }
+
+
+def replay_line(stats: dict[str, Any]) -> str:
+    if stats["latency_ms_p50"] is None:
+        return ""
+    c, r = stats["candidate"], stats["reference_logged"]
+
+    def tokens(d: dict[str, Any]) -> str:
+        return ", ".join(f"{d[k]:,.0f} {k.split('_')[0]}" for k in d if d[k] is not None) or "-"
+
+    return (f"Latency and tokens (replay endpoint, not production): P50 "
+            f"{stats['latency_ms_p50']:,.0f} ms, P95 {stats['latency_ms_p95']:,.0f} ms per call; "
+            f"candidate tokens per call {tokens(c)}; the reference's logged tokens on the same "
+            f"calls {tokens(r)}.\n\n")  # fmt: skip
+
+
+def reasoning_line(carry: bool, stats: dict[str, Any]) -> str:
+    rt = stats["candidate"].get("reasoning_tokens")
+    return (
+        "Reasoning: never scored. The reference's reasoning from earlier turns is "
+        + ("replayed in the history (--carry-reasoning)" if carry else "left out of the history")
+        + "; at the re-asked turn it is never shown (it would give the decision away)."
+        + (f" Candidate reasoning: {rt:,.0f} tokens per call." if rt else "")
+        + "\n\n"
+    )
+
+
+ALL_HELD = (
+    "**Every slice is held by reference noise.** Try `--level tools`: free-text arguments "
+    "(messages, summaries) cannot certify by agreement when the reference words them differently "
+    "each time. Certification by effect needs an environment that can replay a logged state "
+    "(`graduate claim-b`).\n\n"
+)
+
+
+def level_tables(decision: dict[str, Any]) -> str:
+    """Observed disagreement at all three levels per slice, and a diagnostic table sliced by the
+    reference's action (not routable: a router cannot see the reference's answer)."""
+    rows = ["\n## Disagreement at each level\n", "| slice | args | tools | decision |",
+            "|---|---|---|---|"]  # fmt: skip
+    rows += [f"| {k} | {v['args']:.1%} | {v['tools']:.1%} | {v['decision']:.1%} |"
+             for k, v in sorted(decision["by_level"].items())]  # fmt: skip
+    rows += ["\n## By the reference's action (diagnostic, not certified)\n",
+             "Where the reference's own action is the slice: what traffic the disagreements fall "
+             "on. A router cannot see the reference's answer, so certification uses the "
+             "candidate's action (the table above the legend).\n",
+             "| reference action | calls | conversations | disagreement |",
+             "|---|---|---|---|"]  # fmt: skip
+    rows += [f"| {k} | {d['calls']} | {d['sessions']} | {d['disagreement']:.1%} |"
+             for k, d in decision["by_reference_action"].items()]  # fmt: skip
+    return "\n".join(rows) + "\n"
 
 
 def is_text_slice(key: str) -> bool:
@@ -781,6 +947,41 @@ def main(argv: list[str] | None = None) -> None:
         "--fresh", action="store_true", help="ignore cached answers in --out and ask again"
     )
     c.add_argument(
+        "--keep-duplicates",
+        action="store_true",
+        help="keep conversations that repeat an earlier one exactly (default: dropped, since "
+        "a repeat counts the same evidence twice)",
+    )
+    c.add_argument(
+        "--carry-reasoning",
+        action="store_true",
+        help="replay the reference's reasoning from earlier turns in the history (default: "
+        "left out); the re-asked turn's own reasoning is never shown",
+    )
+    c.add_argument(
+        "--level",
+        choices=LEVELS,
+        default="args",
+        help="what counts as agreement: args (same tools and arguments), tools (same tool "
+        "names; arguments not compared), decision (act vs reply); the card prints all three",
+    )
+    c.add_argument(
+        "--ignore-tools",
+        default="",
+        help="comma-separated auxiliary tools left out of the comparison on both sides",
+    )
+    c.add_argument(
+        "--primary-tool",
+        default=None,
+        help="when the reference calls this tool, compare only the calls to it",
+    )
+    c.add_argument(
+        "--reference-noise-cache",
+        default=None,
+        help="folder for the reference's measured noise, reused across candidates "
+        "(default: ~/.cache/graduate/reference-noise)",
+    )
+    c.add_argument(
         "--normalise-args",
         action="store_true",
         help="count format-only argument differences (e.g. 'W1000' for '#W1000') as agreement; "
@@ -823,7 +1024,11 @@ def main(argv: list[str] | None = None) -> None:
     ref_key = _key(args.reference_api_key_env, "--reference-api-key-env")
 
     try:
-        rows, skipped = states(ingest(args.traces, args.preset, limit=args.limit))
+        sessions = list(ingest(args.traces, args.preset, limit=args.limit))
+        dropped = 0
+        if not args.keep_duplicates:  # a repeated conversation would count its evidence twice
+            sessions, dropped = dedupe_sessions(sessions)
+        rows, skipped = states(sessions, args.carry_reasoning)
     except FileNotFoundError:
         _fail(f"no such file: {args.traces}")
     except json.JSONDecodeError as e:
@@ -833,6 +1038,12 @@ def main(argv: list[str] | None = None) -> None:
             f"{args.traces} does not look like --preset {args.preset} ({type(e).__name__}: {e}); "
             "check --preset (see README: trace formats)"
         )
+    complete = completeness(sessions)
+    dups = near_duplicate_sessions(sessions)
+    if dropped:
+        dups = (dropped, dups[1])
+    complete_md = "\n".join(completeness_lines(complete, *dups, dropped=bool(dropped)))
+    print(f"ingest completeness:\n{complete_md}", file=sys.stderr)
     left = ", ".join(f"{n} {k}" for k, n in sorted(skipped.items())) or "none"
     print(f"{len(rows):,} reference calls (left out: {left})", file=sys.stderr)
     if not rows:
@@ -906,12 +1117,29 @@ def main(argv: list[str] | None = None) -> None:
 
     noisy: set[str] = set()
     noise: dict[str, Any] = {}
+    noise_cache: Path | None = None
+    ignore = frozenset(t.strip() for t in args.ignore_tools.split(",") if t.strip())
     if args.reference_base_url and args.reference_model:
         sample = rows[:: max(1, len(rows) // args.reference_samples)][: args.reference_samples]
-        again = {}
+        # the reference's own answers depend on the reference and the states only, so they are
+        # measured once and reused by every candidate run on the same traces
+        noise_cache = Path(
+            args.reference_noise_cache
+            or Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+            / "graduate" / "reference-noise"
+        ) / (
+            stable_hash([args.reference_model, args.reference_base_url,
+                         [(r["key"], r["messages"], r["reference"]) for r in sample]])
+            + ".json"
+        )  # fmt: skip
+        answers: dict[str, Any] = {}
+        if noise_cache.exists() and not args.fresh:
+            with contextlib.suppress(ValueError):
+                answers = json.loads(noise_cache.read_text())
+        todo_ref = [r for r in sample if r["key"] not in answers]
         with ThreadPoolExecutor(args.concurrency) as pool:
             for r, p in zip(
-                sample,
+                todo_ref,
                 pool.map(
                     lambda r: ask(
                         args.reference_base_url,
@@ -920,11 +1148,19 @@ def main(argv: list[str] | None = None) -> None:
                         r["messages"],
                         r["tools"],
                     ),
-                    sample,
+                    todo_ref,
                 ),
                 strict=True,
             ):
-                again[r["key"]] = not agree(_action(p["calls"]), _action(r["reference"]), "args")
+                answers[r["key"]] = p["calls"]
+        if todo_ref:
+            noise_cache.parent.mkdir(parents=True, exist_ok=True)
+            noise_cache.write_text(json.dumps(answers))
+        again = {}
+        for r in sample:
+            ref_calls = compared(r["reference"], r["reference"], ignore, args.primary_tool)
+            re_calls = compared(answers[r["key"]], r["reference"], ignore, args.primary_tool)
+            again[r["key"]] = not agree(_action(re_calls), _action(ref_calls), args.level)
         by: dict[str, list[bool]] = {}
         for r in sample:
             k = str(routing_slice(r["node"], _action(r["reference"]), r["index"]))
@@ -942,8 +1178,13 @@ def main(argv: list[str] | None = None) -> None:
         args.normalise_args,
         getattr(states, "contract", None),
         args.certify_text_slices,
+        args.level,
+        ignore,
+        args.primary_tool,
     )
     card, calibration = plan_history(card, out / "planner.json", fresh=args.fresh)
+    stats = replay_stats(rows, proposals)
+    all_held = bool(noisy) and all(r.slice in noisy for r in card.slices)
     report = {
         "candidate": args.model,
         "candidate_path": candidate_path(args),
@@ -959,8 +1200,22 @@ def main(argv: list[str] | None = None) -> None:
         "normaliser": {"version": NORMALISER_VERSION, "rule": NORMALISER},
         "format_only_counted_as_agreement": decision["forgiven_format_only"],
         "reference_contract": decision["reference_contract"],
+        "ingest_completeness": {
+            **complete,
+            "exact_duplicate_conversations": dups[0],
+            "exact_duplicates_dropped": bool(dropped),
+            "near_duplicate_conversations": dups[1],
+        },
         "decision_split": decision,
         "reference_self_disagreement": noise,
+        "reference_noise_cache": str(noise_cache) if noise_cache else None,
+        "level": args.level,
+        "ignored_tools": sorted(ignore),
+        "primary_tool": args.primary_tool,
+        "disagreement_by_level": decision["by_level"],
+        "replay": stats,
+        "carry_reasoning": args.carry_reasoning,
+        "by_reference_action": decision["by_reference_action"],
         "too_noisy_to_certify_by_agreement": sorted(noisy),
     }
     (out / "card.json").write_text(json.dumps(report, indent=2, default=str))
@@ -972,12 +1227,17 @@ def main(argv: list[str] | None = None) -> None:
     md = (
         f"# Graduate report card: {args.model}\n\n"
         + f"Candidate path: {candidate_path(args)}.\n\n"
+        + f"**Ingest completeness** ({args.preset}):\n{complete_md}\n\n"
         + (
             f"**{errors:,} requests failed** and are left out; rerun to retry.\n\n"
             if errors
             else ""
         )
         + contract_line(decision["reference_contract"])
+        + (ALL_HELD if all_held else "")
+        + level_line(decision)
+        + replay_line(stats)
+        + reasoning_line(args.carry_reasoning, stats)
         + f"{len(rows):,} reference calls; certified share **{card.certified_call_share:.1%}** "
         f"at alpha {args.alpha:g}, confidence {1 - args.delta:.0%}.\n\n"
         f"Replied instead of acting: {decision['replied_instead_of_acting']:.1%}; acted "
@@ -1002,11 +1262,13 @@ def main(argv: list[str] | None = None) -> None:
         + f"Argument normaliser v{NORMALISER_VERSION}: {NORMALISER}.\n"
         + why_table(report["slices"], decision["forgiven_format_only"])
     )
+    md += level_tables(decision)
     if noise:
         md += (
             "\nReference self-disagreement per slice (re-asked): "
             + ", ".join(f"{k} {v:.0%}" for k, v in sorted(noise.items()))
-            + "\n"
+            + f" (measured once, cached in {noise_cache}; reused by any candidate on these "
+            "traces, --fresh measures again)\n"
         )
     (out / "card.md").write_text(md)
     print(md)

@@ -75,6 +75,10 @@ class Call(_Model):
     model: str | None = None
     usage: Usage | None = None
     latency_ms: float | None = None
+    # per-turn overrides of the session's values (multi-agent traces); None: the session's
+    agent_node: str | None = None
+    system: str | None = None
+    tools: list[ToolSchema] | None = None
 
 
 class ModelRef(_Model):

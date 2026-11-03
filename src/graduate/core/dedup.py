@@ -175,3 +175,31 @@ def dedupe_sessions(sessions: Iterable[Session]) -> tuple[list[Session], int]:
         seen.add(h)
         out.append(s)
     return out, dropped
+
+
+def near_duplicate_sessions(
+    sessions: Sequence[Session], *, threshold: float = 0.9, num_perm: int = 64, bands: int = 16
+) -> tuple[int, int]:
+    """(exact, near) counts of conversations that repeat an earlier one: exact on the full
+    content, near on the MinHash Jaccard of the conversation's user and tool text. Repeated
+    conversations count the same evidence twice."""
+    rows = num_perm // bands
+    mh = MinHasher(num_perm)
+    seen: set[str] = set()
+    buckets: dict[tuple[int, bytes], list[int]] = defaultdict(list)
+    sigs: list[NDArray[np.int64]] = []
+    exact = near = 0
+    for s in sessions:
+        h = stable_hash([s.system or "", [m.model_dump(exclude={"reasoning"}) for m in s.messages]])
+        text = "\n".join(m.content for m in s.messages if m.role in ("user", "tool"))
+        sig = mh.signature(shingles(text))
+        keys = [(b, sig[b * rows : (b + 1) * rows].tobytes()) for b in range(bands)]
+        if h in seen:
+            exact += 1
+        elif any(jaccard_estimate(sig, sigs[j]) >= threshold for k in keys for j in buckets[k]):
+            near += 1
+        seen.add(h)
+        for k in keys:
+            buckets[k].append(len(sigs))
+        sigs.append(sig)
+    return exact, near

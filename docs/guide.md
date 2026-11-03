@@ -50,6 +50,8 @@ experiments: on a local server, with `--preset tau2` traces.
 | `--preset` | Reads |
 |---|---|
 | `openai` (default) | one conversation per line: `messages` (OpenAI chat format, `tool_calls` or legacy `function_call`), optional `tools` |
+| `otel-genai` | OpenTelemetry GenAI spans, one trace per record (an OTLP JSON export, a span tree, or a row with a `spans` list): Google ADK (also its legacy `call_llm` spans), Cloud Trace, Langfuse, Phoenix and Datadog exports. One conversation per agent (`gen_ai.agent.name`); the session is `gen_ai.conversation.id` |
+| `mlflow` | MLflow traces (`info` + `data.spans`, e.g. a Databricks export): the last `CHAT_MODEL` span of each trace; the inputs may be OpenAI chat, OTel parts or Gemini `contents`; the session is `request.metadata.session_id`, else the trace id |
 | `hermes` | ShareGPT-style `conversations` with `<tool_call>` blocks (Hermes function calling) |
 | `toucan` | rows of the Toucan tool-agent dataset |
 | `nemotron` | rows of the Nemotron-Agentic dataset |

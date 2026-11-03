@@ -101,6 +101,39 @@ for every column.
 `certify` once per candidate on the same traces with the same options and compare the cards
 slice by slice.
 
+## Hosted endpoints
+
+Any OpenAI-compatible chat-completions endpoint works: pass `--base-url`, `--model` and
+`--api-key-env NAME` (the environment variable holding the key, sent as `Authorization: Bearer`).
+
+| Provider | `--base-url` | `--model` | Key |
+| --- | --- | --- | --- |
+| Databricks | `https://<workspace>/serving-endpoints` | the serving endpoint's name | a workspace personal access token |
+| Vertex AI (Gemini) | `https://<region>-aiplatform.googleapis.com/v1/projects/<project>/locations/<region>/endpoints/openapi` | `google/<model>`, e.g. `google/gemini-2.5-flash` | `gcloud auth print-access-token` (expires after an hour) |
+| Azure OpenAI | `https://<resource>.openai.azure.com/openai/v1` | the deployment name | a Microsoft Entra ID access token |
+| OpenRouter, Together, vLLM, Ollama | the provider's `/v1` URL | the provider's model name | the provider's key; none for a local server |
+
+Gemini models that think return a thought signature with each tool call, and Vertex rejects a
+replayed history without it: Graduate keeps it from your traces and sends it back unchanged.
+Rate limits and server errors are retried with backoff.
+
+A run on Databricks, measuring the reference's noise once and comparing tool choices:
+
+```bash
+export DATABRICKS_TOKEN=...   # a workspace personal access token
+graduate certify traces.jsonl --preset mlflow \
+  --base-url https://<workspace>/serving-endpoints --model <candidate-endpoint> \
+  --api-key-env DATABRICKS_TOKEN \
+  --reference-base-url https://<workspace>/serving-endpoints --reference-model <reference-endpoint> \
+  --reference-api-key-env DATABRICKS_TOKEN \
+  --level tools --concurrency 4 --out report-<candidate>/
+```
+
+`--preset mlflow` reads MLflow traces (use `--preset openai` for OpenAI chat JSONL with a
+`session_id` per conversation). The reference's noise is cached and reused when you run the next
+candidate on the same traces. `--level tools` compares tool choices without their arguments; the
+card still prints all three levels.
+
 ## What it does not check
 
 - **Wording.** Two text replies agree when both are replies; their content is not compared.
@@ -135,7 +168,7 @@ not `card.json`, which keeps raw values from your traces.
   author = {{The Graduate Authors}},
   year   = {2026},
   url    = {https://github.com/nstream-ai/graduate},
-  note   = {Version 0.2.2}
+  note   = {Version 0.2.3}
 }
 ```
 

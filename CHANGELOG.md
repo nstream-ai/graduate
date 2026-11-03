@@ -3,7 +3,44 @@
 All notable changes to this project are listed here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
-## [0.2.3] - unreleased
+## [0.2.3] - 2026-11-04
+
+### Added
+- `certify --level {args,tools,decision}` (default `args`): what counts as agreement. The card
+  prints the observed disagreement at all three levels per slice.
+- `--ignore-tools a,b` leaves auxiliary tools out of the comparison on both sides;
+  `--primary-tool X` compares only the calls to X when the reference calls it. The card lists
+  both.
+- Per-turn `agent_node`, `system` and `tools` on `Call` (multi-agent traces); slices use the
+  turn's node. The `openai` preset reads them from an assistant message, and reads `session_id`
+  (else `id`).
+- The reference's noise is measured once per reference and traces and cached
+  (`~/.cache/graduate/reference-noise`, or `--reference-noise-cache`); every candidate run on the
+  same traces reuses it, and the card names the cache.
+- A diagnostic table by the reference's action, beside the router table, in `card.md` and
+  `card.json` (`by_reference_action`).
+- Ingest presets for trace stores: `otel-genai` (OpenTelemetry GenAI spans: Google ADK including
+  its legacy `call_llm` spans, Cloud Trace, Langfuse, Phoenix, Datadog; one conversation per
+  agent, with its usage) and `mlflow` (MLflow traces, e.g. from Databricks; the shape of the
+  inputs is sniffed: OpenAI chat, OTel parts or Gemini). A trace whose content capture is off or
+  redacted is refused with that reason.
+- An ingest completeness block at the top of the card: conversations without a system prompt or
+  tool list, tool calls without a result, redacted or empty inputs, a logged input much longer
+  than the replayed prompt (missing context), a tool list over 3x the tools ever called, and
+  exact and near-duplicate conversations.
+- Conversations that repeat an earlier one exactly are dropped before certification (a repeat
+  counts the same evidence twice); `--keep-duplicates` keeps them. Near-duplicates are counted,
+  not dropped.
+
+- `proposals.jsonl` records each answer's latency and usage; the card gives P50 and P95
+  latency and tokens per call beside the reference's logged tokens, labelled "replay endpoint,
+  not production".
+- The reasoning policy on the card: reasoning is never scored; the reference's reasoning from
+  earlier turns is replayed only with `--carry-reasoning`, and never at the re-asked turn;
+  candidate reasoning tokens are counted.
+- When every slice is held by reference noise, the card suggests `--level tools` and says why.
+- README: a table of hosted endpoints (Databricks, Vertex AI, Azure OpenAI and others) and a
+  Databricks recipe.
 
 ### Fixed
 - The assistant's tool-call ids are kept through ingest and replay; an id is made up only for a
