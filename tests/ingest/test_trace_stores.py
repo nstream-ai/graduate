@@ -130,4 +130,5 @@ def test_completeness_block_and_duplicates() -> None:
     assert c["no_tool_list"] == 0 and c["tool_calls_without_result"] == 0
     assert near_duplicate_sessions([s, s.model_copy(), bare]) == (1, 0)
     lines = completeness_lines(c, 1, 0)
-    assert any("no system prompt" in x for x in lines) and any("repeat" in x for x in lines)
+    assert any("no system prompt" in x for x in lines) and any("are kept" in x for x in lines)
+    assert any("were dropped" in x for x in completeness_lines(c, 1, 0, dropped=True))

@@ -110,7 +110,9 @@ def completeness(sessions: Iterable[Session]) -> dict[str, int | float]:
             "tool_list_over_3x_tools_called": catalogue}  # fmt: skip
 
 
-def completeness_lines(c: dict[str, int | float], exact_dups: int, near_dups: int) -> list[str]:
+def completeness_lines(
+    c: dict[str, int | float], exact_dups: int, near_dups: int, *, dropped: bool = False
+) -> list[str]:
     """The card's completeness block: one line per problem found, or one line saying none."""
     n = int(c["conversations"]) or 1
     text = {
@@ -124,9 +126,13 @@ def completeness_lines(c: dict[str, int | float], exact_dups: int, near_dups: in
         "list may be the whole catalogue, not the turn's",
     }
     out = [f"- {c[k]:,} of {n:,} conversations {v}" for k, v in text.items() if c[k]]
-    if exact_dups or near_dups:
-        out.append(
-            f"- {exact_dups:,} conversations repeat an earlier one exactly and "
-            f"{near_dups:,} nearly (90% similar): repeats count the same evidence twice"
-        )
+    if exact_dups and dropped:
+        out.append(f"- {exact_dups:,} conversations repeated an earlier one exactly and were "
+                   "dropped (--keep-duplicates keeps them)")  # fmt: skip
+    elif exact_dups:
+        out.append(f"- {exact_dups:,} conversations repeat an earlier one exactly and are kept "
+                   "(--keep-duplicates): they count the same evidence twice")  # fmt: skip
+    if near_dups:
+        out.append(f"- {near_dups:,} conversations nearly repeat an earlier one (90% similar): "
+                   "kept, since they may differ where it matters; check them")  # fmt: skip
     return out or [f"- all {n:,} conversations complete (system prompt, tools, results)"]
